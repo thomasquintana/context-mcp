@@ -196,6 +196,13 @@ impl ServerHandler for McpServer {
                     )
                     .await
             }
+            "context_ingest_url" => {
+                let args: context_engine::urls::IngestUrl = serde_json::from_value(arguments)
+                    .map_err(|_| {
+                        ErrorData::invalid_params("invalid URL ingestion arguments", None)
+                    })?;
+                self.application.ingest_url(&actor, args).await
+            }
             "context_job_status" => {
                 let args: JobArguments = serde_json::from_value(arguments)
                     .map_err(|_| ErrorData::invalid_params("invalid job arguments", None))?;
@@ -301,6 +308,12 @@ pub fn tools() -> Vec<Tool> {
             "Read creator-owned progress/error and cleanup status. Raw inputs, opaque handles and source content are not returned.",
             json!({"type":"object","required":["job"],"properties":{"job":id},"additionalProperties":false}),
             true,
+        ),
+        (
+            "context_ingest_url",
+            "Import one exact operator-allowlisted URL into a verified immutable revision. No redirects, crawling or embedded subresource fetching.",
+            json!({"type":"object","required":["collection","name","url","media_type","idempotency_key"],"properties":{"collection":id,"asset":id,"name":{"type":"string","maxLength":256},"url":{"type":"string","format":"uri","maxLength":8192},"media_type":{"type":"string","maxLength":128},"profile":{"type":"string"},"idempotency_key":{"type":"string","minLength":1,"maxLength":200}},"additionalProperties":false}),
+            false,
         ),
         (
             "context_cancel_job",

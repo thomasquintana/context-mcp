@@ -106,7 +106,14 @@ impl Fixture {
         let issued = auth
             .issue_service(
                 principal,
-                &BTreeSet::from([Permission::Read, Permission::Ingest]),
+                &BTreeSet::from([
+                    Permission::Read,
+                    Permission::Ingest,
+                    Permission::WriteMemory,
+                    Permission::Synthesize,
+                    Permission::Share,
+                    Permission::Purge,
+                ]),
                 Duration::from_secs(600),
             )
             .await
@@ -141,7 +148,7 @@ impl Fixture {
             ),
             (
                 "enrich",
-                r#"{ document = { encoding = "json", value = { summary = "Fixture summary", entities = [] } } }"#,
+                r#"{ document = { encoding = "json", value = { summary = "Fixture summary", entities = [{name = "Ocean", entity_type = "place"},{name = "Blue",entity_type = "color"}], relationships = [{from = "Ocean",to = "Blue",relationship = "has_color"}] } } }"#,
             ),
             ("embed", r#"{ embedding = [1,0,0], space = "test" }"#),
             ("cleanup", r#"{ done = true }"#),
@@ -171,6 +178,19 @@ graph fixture.{role} {{
                 "prompts":{"catalog_version":"0.1","mcp_protocol_version":"2025-11-25","servers":{},"schema_documents":{},"prompts":[]},
             }),
         );
+        let rendered_hash = Sha256::digest(b"derived fixture bytes")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        std::fs::write(dir.path().join("render.htlk"),format!(r#"
+ir_version = "0.1"
+graph fixture.render {{
+    inputs = {{ request = json }}
+    outputs = {{ result = json }}
+    nodes {{ result = eval(json, {{ document = {{encoding = "json",value = {{file = "selection.bin",media_type = "application/octet-stream",sha256 = "{rendered_hash}"}}}} }}) }}
+    edges {{ edge result {{from = result.outputs.value to = outputs.result}} }}
+}}
+"#)).unwrap();
         let mut roles = serde_json::Map::new();
         for role in [
             "extract",
@@ -179,13 +199,14 @@ graph fixture.{role} {{
             "embed",
             "cleanup",
             "bad_cleanup",
+            "render",
         ] {
             roles.insert(
                 role.into(),
                 json!({"source":format!("{role}.htlk"),"catalogs":"catalogs.json","checkpoints":["result"]}),
             );
         }
-        let profile = json!({"media_types":["text/plain"],"extract_role":"extract","enrich_role":"enrich","space":"test","chunk_bytes":128,"cleanup_role":"cleanup","cleanup_node":"result"});
+        let profile = json!({"media_types":["text/plain"],"extract_role":"extract","media_role":"render","enrich_role":"enrich","space":"test","chunk_bytes":128,"cleanup_role":"cleanup","cleanup_node":"result"});
         let mut broken = profile.clone();
         broken["extract_role"] = json!("broken");
         let mut unclean = broken.clone();
@@ -624,6 +645,309 @@ fn actual_video_model_workflows_publish_independently_checked_evidence() {
         for row in &rows {let vector=row["embedding"].as_array().unwrap();assert_eq!(vector.len(),256);assert!(vector.iter().all(|v|v.as_f64().unwrap().is_finite()));}
         let indexed:Value=fixture.http.get(format!("{}/collections/{}",fixture.typesense,fixture.index)).header("X-TYPESENSE-API-KEY",&fixture.index_key).send().await.unwrap().json().await.unwrap();
         assert_eq!(indexed["num_documents"].as_u64(),Some(rows.len() as u64));
+        fixture.close().await;
+    });
+}
+
+#[test]
+#[ignore = "requires isolated PostgreSQL, MinIO and Typesense; real hybrid index and pure embedding roles"]
+fn context_budgets_navigation_and_revocation_use_authoritative_evidence() {
+    actix::System::new().block_on(async {
+        use context_core::{access::Resource, context::Pointer};
+        let fixture = Fixture::open().await;
+        fixture.app.start_workers().await.unwrap();
+        let admitted = fixture
+            .app
+            .ingest_text(
+                &fixture.actor,
+                fixture.collection,
+                "context.txt",
+                "fixture content",
+                None,
+                "context",
+            )
+            .await
+            .unwrap();
+        let job: JobId = admitted["job"].as_str().unwrap().parse().unwrap();
+        assert_eq!(fixture.wait(job).await["state"], "succeeded");
+        let args = || context_engine::retrieval::Query {
+            scope: Resource::Workspace(fixture.workspace),
+            query: "fixture content".into(),
+            limit: 10,
+            token_budget: None,
+            historical: false,
+            space: None,
+        };
+        let map = fixture.app.query(&fixture.actor, args()).await.unwrap();
+        assert_eq!(map.evidence.len(), 1);
+        assert_eq!(map.evidence[0].text, "fixture content");
+        assert_eq!(map.pointers.len(), 2);
+        let pointer = Pointer::Content {
+            content: map.evidence[0].id,
+        };
+        let expanded = fixture
+            .app
+            .expand(&fixture.actor, pointer.clone())
+            .await
+            .unwrap();
+        assert_eq!(expanded["body"]["text"], "fixture content");
+        assert!(expanded["body"].get("embedding").is_none());
+        let entity = fixture
+            .app
+            .expand(&fixture.actor, map.pointers[0].clone())
+            .await
+            .unwrap();
+        assert_eq!(entity["origin"], "generated");
+        assert_eq!(entity["body"]["relationships"].as_array().unwrap().len(), 1);
+        let mut bounded = args();
+        bounded.token_budget = std::num::NonZeroU32::new(1);
+        let map = fixture.app.query(&fixture.actor, bounded).await.unwrap();
+        assert!(map.tokens.used <= 1);
+        assert!(map.truncated);
+        assert!(!map.evidence[0].text.is_empty());
+        let asset = Uuid::parse_str(admitted["asset"].as_str().unwrap()).unwrap();
+        sqlx::query(
+            "UPDATE context.resources SET inherit=false,acl_version=acl_version+1 WHERE id=$1",
+        )
+        .bind(asset)
+        .execute(fixture.db.pool())
+        .await
+        .unwrap();
+        assert!(
+            fixture
+                .app
+                .query(&fixture.actor, args())
+                .await
+                .unwrap()
+                .evidence
+                .is_empty()
+        );
+        assert!(fixture.app.expand(&fixture.actor, pointer).await.is_err());
+        fixture.close().await;
+    });
+}
+
+#[test]
+#[ignore = "requires isolated PostgreSQL, MinIO and Typesense; pure render role verifies durable materialization"]
+fn selected_media_publishes_derived_bytes_without_replacing_the_source() {
+    actix::System::new().block_on(async {
+        let mut fixture = Fixture::open().await;
+        fixture.app.start_workers().await.unwrap();
+        let original = fixture
+            .app
+            .ingest_text(
+                &fixture.actor,
+                fixture.collection,
+                "source.txt",
+                "fixture content",
+                None,
+                "source-for-render",
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            fixture
+                .wait(original["job"].as_str().unwrap().parse().unwrap())
+                .await["state"],
+            "succeeded"
+        );
+        fixture.app.shutdown().await.unwrap();
+        fixture.app = Arc::new(
+            Application::open(&fixture.config, fixture._dir.path())
+                .await
+                .unwrap(),
+        );
+        let asset = original["asset"].as_str().unwrap().parse().unwrap();
+        let revision = original["revision"].as_str().unwrap().parse().unwrap();
+        let receipt = fixture
+            .app
+            .extract_media(
+                &fixture.actor,
+                context_engine::media::ExtractMedia {
+                    asset,
+                    revision,
+                    location: context_core::content::SourceLocation::Pages {
+                        first: 1.try_into().unwrap(),
+                        last: 1.try_into().unwrap(),
+                    },
+                    profile: None,
+                    idempotency_key: "render-1".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let job: JobId = receipt["job"].as_str().unwrap().parse().unwrap();
+        let directory = fixture._dir.path().join("staging").join(job.to_string());
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("selection.bin"), b"derived fixture bytes").unwrap();
+        fixture.app.start_workers().await.unwrap();
+        let status = fixture.wait(job).await;
+        assert_eq!(status["state"], "succeeded");
+        let content = status["result"]["content"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let expanded = fixture
+            .app
+            .expand(
+                &fixture.actor,
+                context_core::context::Pointer::Content { content },
+            )
+            .await
+            .unwrap();
+        let bytes = fixture
+            .http
+            .get(expanded["url"].as_str().unwrap())
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap();
+        assert_eq!(bytes.as_ref(), b"derived fixture bytes");
+        let current: Uuid =
+            sqlx::query_scalar("SELECT current_revision FROM context.assets WHERE id=$1")
+                .bind(Uuid::from(asset))
+                .fetch_one(fixture.db.pool())
+                .await
+                .unwrap();
+        assert_eq!(current, Uuid::from(revision));
+        assert!(!directory.exists());
+        fixture.close().await;
+    });
+}
+
+#[test]
+#[ignore = "requires isolated PostgreSQL, MinIO and Typesense; pure processing roles"]
+fn explicit_reprocess_preserves_history_and_live_cross_tenant_sharing() {
+    actix::System::new().block_on(async {
+        use context_core::{
+            access::{Grant, Recipient, Resource},
+            context::Pointer,
+        };
+        let fixture = Fixture::open().await;
+        fixture.app.start_workers().await.unwrap();
+        let original = fixture
+            .app
+            .ingest_text(
+                &fixture.actor,
+                fixture.collection,
+                "versioned.txt",
+                "fixture content",
+                None,
+                "history-original",
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            fixture
+                .wait(original["job"].as_str().unwrap().parse().unwrap())
+                .await["state"],
+            "succeeded"
+        );
+        let asset = original["asset"].as_str().unwrap().parse().unwrap();
+        let revision = original["revision"].as_str().unwrap().parse().unwrap();
+        let changed = fixture
+            .app
+            .reprocess(&fixture.actor, asset, revision, None, "reprocess")
+            .await
+            .unwrap();
+        assert_ne!(changed["revision"], original["revision"]);
+        assert_eq!(
+            fixture
+                .wait(changed["job"].as_str().unwrap().parse().unwrap())
+                .await["state"],
+            "succeeded"
+        );
+        assert_eq!(
+            fixture
+                .app
+                .reprocess(&fixture.actor, asset, revision, None, "reprocess")
+                .await
+                .unwrap(),
+            changed
+        );
+        assert!(
+            fixture
+                .app
+                .reprocess(&fixture.actor, asset, revision, None, "stale-reprocess")
+                .await
+                .is_err()
+        );
+        let history = fixture
+            .app
+            .asset_history(&fixture.actor, asset, None, 20)
+            .await
+            .unwrap();
+        assert_eq!(history["revisions"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            fixture
+                .app
+                .asset_revision(&fixture.actor, asset, revision)
+                .await
+                .unwrap()["current"],
+            false
+        );
+        let guest = fixture
+            .db
+            .identity("sharing-test", &Uuid::now_v7().to_string(), "service")
+            .await
+            .unwrap();
+        let foreign = bootstrap(&fixture.db, guest, "foreign reader")
+            .await
+            .unwrap();
+        let auth = Authenticator::open(fixture.db.clone(), None).await.unwrap();
+        let token = auth
+            .issue_service(
+                guest,
+                &BTreeSet::from([Permission::Read]),
+                Duration::from_secs(600),
+            )
+            .await
+            .unwrap();
+        let actor = auth.authenticate(token.secret()).await.unwrap();
+        let pointer = Pointer::Asset { asset, revision };
+        assert!(fixture.app.expand(&actor, pointer.clone()).await.is_err());
+        let shared = fixture
+            .app
+            .set_access(
+                &fixture.actor,
+                context_engine::sharing::SetAccess {
+                    resource: Resource::Asset(asset),
+                    expected_acl_version: 1,
+                    inherit: true,
+                    grants: vec![Grant {
+                        recipient: Recipient::Tenant(foreign.tenant),
+                        permissions: BTreeSet::from([Permission::Read]),
+                    }],
+                    idempotency_key: "share".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(shared["acl_version"], 2);
+        assert!(fixture.app.expand(&actor, pointer.clone()).await.is_ok());
+        fixture
+            .app
+            .set_access(
+                &fixture.actor,
+                context_engine::sharing::SetAccess {
+                    resource: Resource::Asset(asset),
+                    expected_acl_version: 2,
+                    inherit: true,
+                    grants: vec![],
+                    idempotency_key: "revoke".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(fixture.app.expand(&actor, pointer).await.is_err());
+        sqlx::query("DELETE FROM context.resources WHERE id=$1")
+            .bind(Uuid::from(foreign.tenant))
+            .execute(fixture.db.pool())
+            .await
+            .unwrap();
         fixture.close().await;
     });
 }

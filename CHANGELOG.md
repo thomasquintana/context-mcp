@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add permission-aware hybrid context maps with real BPE budgets, transitive source
+  protection, generated entity navigation, immutable history/reprocessing and live
+  cross-tenant ACL replacement/revocation. Add durable exact page/region/clip jobs,
+  actual sandbox selection checks and HTTP/stdio context roundtrip verification.
+
 - Add offline Rust document/archive processing, sandboxed PDF/media extraction,
   replaceable model role graphs, streamed allowlisted exact-URL acquisition and
   tracked acquisition cleanup. Verify 28 actual sandbox format cases and a real

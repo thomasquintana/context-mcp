@@ -52,7 +52,7 @@ impl Application {
         let result = json!({"job":job,"asset":asset,"revision":row.try_get::<Option<Uuid>,_>("revision").map_err(context_storage::Error::from)?,
             "state":row.try_get::<String,_>("state").map_err(context_storage::Error::from)?,"stage":row.try_get::<String,_>("stage").map_err(context_storage::Error::from)?,
             "error_code":row.try_get::<Option<String>,_>("error_code").map_err(context_storage::Error::from)?,
-            "chunks":detail.get("chunks"),"cleanup_pending":detail.get("cleanup_pending").and_then(Value::as_bool).unwrap_or(false)});
+            "chunks":detail.get("chunks"),"result":detail.get("result"),"cleanup_pending":detail.get("cleanup_pending").and_then(Value::as_bool).unwrap_or(false)});
         view.commit().await?;
         Ok(result)
     }
@@ -63,14 +63,23 @@ impl Application {
     /// Rejects terminal successes, nonowners, missing Ingest authority and changed keys.
     pub async fn cancel_job(&self, actor: &Authentication, job: JobId, key: &str) -> Result<Value> {
         let plane = self.data_plane()?;
-        let row=sqlx::query("SELECT j.asset,r.owner FROM context.jobs j JOIN context.resources r ON r.id=j.asset WHERE j.id=$1 AND j.principal=$2")
+        let row=sqlx::query("SELECT j.asset,j.kind,r.owner FROM context.jobs j JOIN context.resources r ON r.id=j.asset WHERE j.id=$1 AND j.principal=$2")
             .bind(Uuid::from(job)).bind(Uuid::from(actor.principal)).fetch_optional(self.database.pool()).await.map_err(context_storage::Error::from)?.ok_or(context_storage::Error::Unavailable)?;
         let asset = AssetId::from(
             row.try_get::<Uuid, _>("asset")
                 .map_err(context_storage::Error::from)?,
         );
+        let media = row
+            .try_get::<String, _>("kind")
+            .map_err(context_storage::Error::from)?
+            == "media";
+        let permission = if media {
+            Permission::Read
+        } else {
+            Permission::Ingest
+        };
         self.database
-            .authorized_view(actor, Resource::Asset(asset), Permission::Ingest)
+            .authorized_view(actor, Resource::Asset(asset), permission)
             .await?
             .commit()
             .await?;
@@ -82,7 +91,7 @@ impl Application {
             .await;
         let mut view = self
             .database
-            .authorized_write(actor, Resource::Asset(asset), Permission::Ingest)
+            .authorized_materialize(actor, Resource::Asset(asset), permission)
             .await?;
         let tx = view.transaction();
         let hash: [u8; 32] = Sha256::digest(Uuid::from(job).as_bytes()).into();
@@ -113,17 +122,19 @@ impl Application {
             view.commit().await?;
             return Ok(result);
         }
-        sqlx::query(
-            "UPDATE context.assets SET generation=generation+1 WHERE id=$1 AND generation=$2",
-        )
-        .bind(Uuid::from(asset))
-        .bind(
-            row.try_get::<i64, _>("generation")
-                .map_err(context_storage::Error::from)?,
-        )
-        .execute(&mut **tx)
-        .await
-        .map_err(context_storage::Error::from)?;
+        if !media {
+            sqlx::query(
+                "UPDATE context.assets SET generation=generation+1 WHERE id=$1 AND generation=$2",
+            )
+            .bind(Uuid::from(asset))
+            .bind(
+                row.try_get::<i64, _>("generation")
+                    .map_err(context_storage::Error::from)?,
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(context_storage::Error::from)?;
+        }
         sqlx::query("UPDATE context.jobs SET state='cancelled',detail=detail||'{\"cleanup_pending\":true}'::jsonb WHERE id=$1")
             .bind(Uuid::from(job)).execute(&mut **tx).await.map_err(context_storage::Error::from)?;
         let authority:Value=sqlx::query_scalar("UPDATE context.workflow_authority SET authority=authority||'{\"fenced\":true}'::jsonb WHERE job=$1 AND active RETURNING authority")
@@ -188,6 +199,13 @@ impl Application {
             .fetch_one(&mut **tx)
             .await
             .map_err(context_storage::Error::from)?;
+        if row
+            .try_get::<String, _>("kind")
+            .map_err(context_storage::Error::from)?
+            == "media"
+        {
+            return Err(context_storage::Error::Conflict.into());
+        }
         let detail: Value = row
             .try_get("detail")
             .map_err(context_storage::Error::from)?;

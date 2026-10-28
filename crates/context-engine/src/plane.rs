@@ -28,9 +28,13 @@ pub(crate) struct Plane {
     pub blobs: Blobs,
     pub search: BTreeMap<String, Search>,
     pub staging: PathBuf,
+    pub tokenizer: tiktoken_rs::CoreBPE,
     pub controls: Mutex<BTreeMap<JobId, Arc<Control>>>,
     pub stop: CancellationToken,
     pub tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
+    pub calls: tokio::sync::mpsc::Sender<crate::operations::Invocation>,
+    pub receiver: Mutex<tokio::sync::mpsc::Receiver<crate::operations::Invocation>>,
+    pub requests: Mutex<BTreeMap<JobId, crate::operations::Pending>>,
     mutations: Mutex<BTreeMap<TenantId, Weak<Mutex<()>>>>,
 }
 
@@ -84,7 +88,17 @@ impl Plane {
         }
         builder.create(&staging).map_err(|_| Error::Configuration)?;
         let staging = staging.canonicalize().map_err(|_| Error::Configuration)?;
+        let (calls, receiver) = tokio::sync::mpsc::channel(config.workers * 4);
         let plane = Self {
+            tokenizer: match config.token_encoding.as_str() {
+                "cl100k_base" => tiktoken_rs::cl100k_base(),
+                "o200k_base" => tiktoken_rs::o200k_base(),
+                _ => return Err(Error::Configuration),
+            }
+            .map_err(|_| Error::Configuration)?,
+            calls,
+            receiver: Mutex::new(receiver),
+            requests: Mutex::new(BTreeMap::new()),
             config: config.clone(),
             blobs,
             search,
@@ -137,6 +151,7 @@ impl Plane {
         names.extend(profile.describe_role.iter());
         names.extend(profile.transcribe_role.iter());
         names.extend(profile.artifact_role.iter());
+        names.extend(profile.media_role.iter());
         names.extend(profile.cleanup_role.iter());
         if let Some(node) = &profile.cleanup_node
             && !host.has_checkpoint(&profile.extract_role, node)

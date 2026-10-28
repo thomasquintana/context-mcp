@@ -71,7 +71,7 @@ def fixtures(directory, image):
 
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--image",default="context-mcp-media:processing");args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--image",default="context-mcp-media:processing");parser.add_argument("--selections-only",action="store_true");args=parser.parse_args()
     directory=Path(tempfile.mkdtemp(prefix="formats-",dir=ROOT/"target/providers"));os.chmod(directory,0o700)
     source=directory/"fixtures";source.mkdir();profiles=directory/"profiles";profiles.mkdir()
     image=execute(["docker","image","inspect","--format","{{.Id}}",args.image],capture=True).stdout.strip()
@@ -83,7 +83,7 @@ def main():
     selection=json.loads((ROOT/"examples/integration/discover.json").read_text());del selection["servers"]["llm"];selection["endpoints"]=endpoints
     write_json(directory/"discovery.json",selection);catalogs=directory/"catalogs.json";host("discover",directory/"discovery.json",catalogs,env)
     evidence=[]
-    for name,media in sources.items():
+    for name,media in ({} if args.selections_only else sources).items():
         job=directory/("job-"+name);job.mkdir();shutil.copyfile(source/name,job/"source.input")
         request={"job":str(uuid.uuid4()),"asset":{"media_type":media},"directory":str(job),"cursor":None}
         write_json(job/"request.json",request)
@@ -101,6 +101,25 @@ def main():
             if "file" in segment:assert hashlib.sha256((job/segment["file"]).read_bytes()).hexdigest()==segment["sha256"]
         evidence.append({"file":name,"media_type":media,"segments":len(segments),"fingerprint":result["fingerprint"]})
         print("Verified",name)
+    for name,location,mime in [
+        ("paper.pdf",{"kind":"pages","first":1,"last":1},"image/jpeg"),
+        ("blue.png",{"kind":"region","x":8,"y":8,"width":16,"height":16},"image/png"),
+        ("video.mp4",{"kind":"time","start_ms":1000,"end_ms":2000},"video/mp4"),
+        ("speech.wav",{"kind":"time","start_ms":500,"end_ms":1500},"audio/wav"),
+    ]:
+        job=directory/("selection-"+name);job.mkdir();shutil.copyfile(source/name,job/"source.input")
+        request={"operation":"render","job":str(uuid.uuid4()),"asset":{"media_type":sources[name]},"directory":str(job),"location":location}
+        write_json(job/"request.json",request)
+        write_json(job/"config.json",{"source":str(ROOT/"examples/operator/extract.htlk"),"catalogs":str(catalogs),"inputs":{"request":request},"endpoints":endpoints,"database":"runtime.sqlite","idempotency_key":name})
+        result=host("run",job/"config.json",job/"result.json",env);accepted=result["outputs"]["result"]
+        assert accepted["native_exit"]==0 and accepted["destroyed"]==1
+        selected=json.loads(accepted["document"]["value"]);assert selected["media_type"]==mime
+        data=(job/selected["file"]).read_bytes();assert hashlib.sha256(data).hexdigest()==selected["sha256"] and len(data)<=2*1024*1024
+        if mime=="image/png":assert int.from_bytes(data[16:20],"big")==16 and int.from_bytes(data[20:24],"big")==16
+        if location["kind"]=="time":
+            probe=execute(["docker","run","--rm","--network","none","--mount",f"type=bind,src={job},dst=/work,readonly","--workdir","/work",image,"ffprobe","-v","error","-show_entries","format=duration","-of","json",selected["file"]],capture=True)
+            assert abs(float(json.loads(probe.stdout)["format"]["duration"])-1.0)<0.2
+        evidence.append({"file":name,"selection":location,"media_type":mime,"fingerprint":result["fingerprint"]});print("Verified selection",name)
     write_json(directory/"evidence.json",{"image":image,"cases":evidence,"provider":"actual mcp-sandbox through HTLK","models_called":False})
     print("Format acceptance passed:",directory.relative_to(ROOT))
 

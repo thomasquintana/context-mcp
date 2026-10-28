@@ -622,8 +622,148 @@ fn extract(media: &str) -> Result<Vec<Value>> {
     }
     Ok(out)
 }
+fn render(request: &Value) -> Result<()> {
+    let location = &request["location"];
+    let media = request["asset"]["media_type"]
+        .as_str()
+        .ok_or("media type")?;
+    let number = |key: &str| location[key].as_u64().ok_or("coordinate");
+    let (file, mime) = match location["kind"].as_str() {
+        Some("pages") if media == "application/pdf" => {
+            let page = number("first")?;
+            if page == 0 || page > 1000 || number("last")? != page {
+                return Err("page bounds".into());
+            }
+            native(
+                "pdftoppm",
+                &[
+                    "-scale-to",
+                    "1280",
+                    "-jpeg",
+                    "-singlefile",
+                    "-f",
+                    &page.to_string(),
+                    "-l",
+                    &page.to_string(),
+                    "source.input",
+                    "selection",
+                ],
+            )?;
+            ("selection.jpg", "image/jpeg")
+        }
+        Some("region") if media.starts_with("image/") => {
+            let (x, y, w, h) = (
+                number("x")?,
+                number("y")?,
+                number("width")?,
+                number("height")?,
+            );
+            if w == 0 || h == 0 || w > 8192 || h > 8192 || x > 16384 || y > 16384 {
+                return Err("region bounds".into());
+            }
+            native(
+                "ffmpeg",
+                &[
+                    "-y",
+                    "-v",
+                    "error",
+                    "-i",
+                    "source.input",
+                    "-vf",
+                    &format!("crop={w}:{h}:{x}:{y}"),
+                    "-frames:v",
+                    "1",
+                    "-threads",
+                    "1",
+                    "selection.png",
+                ],
+            )?;
+            ("selection.png", "image/png")
+        }
+        Some("time") if media.starts_with("audio/") || media.starts_with("video/") => {
+            let start = number("start_ms")?;
+            let end = number("end_ms")?;
+            let duration = end.checked_sub(start).ok_or("time bounds")?;
+            if duration == 0 || duration > 60000 {
+                return Err("time bounds".into());
+            }
+            let start = (start as f64 / 1000.0).to_string();
+            let duration = (duration as f64 / 1000.0).to_string();
+            if media.starts_with("video/") {
+                native(
+                    "ffmpeg",
+                    &[
+                        "-y",
+                        "-v",
+                        "error",
+                        "-ss",
+                        &start,
+                        "-i",
+                        "source.input",
+                        "-t",
+                        &duration,
+                        "-vf",
+                        "scale=640:640:force_original_aspect_ratio=decrease",
+                        "-c:v",
+                        "libx264",
+                        "-b:v",
+                        "192k",
+                        "-maxrate",
+                        "192k",
+                        "-bufsize",
+                        "384k",
+                        "-threads",
+                        "1",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "48k",
+                        "-movflags",
+                        "+faststart",
+                        "selection.mp4",
+                    ],
+                )?;
+                ("selection.mp4", "video/mp4")
+            } else {
+                native(
+                    "ffmpeg",
+                    &[
+                        "-y",
+                        "-v",
+                        "error",
+                        "-ss",
+                        &start,
+                        "-i",
+                        "source.input",
+                        "-t",
+                        &duration,
+                        "-vn",
+                        "-ac",
+                        "1",
+                        "-ar",
+                        "16000",
+                        "selection.wav",
+                    ],
+                )?;
+                ("selection.wav", "audio/wav")
+            }
+        }
+        _ => return Err("unsupported selection".into()),
+    };
+    let bytes = bounded(file, 2 * 1024 * 1024)?;
+    let hash = Sha256::digest(bytes)
+        .iter()
+        .map(|v| format!("{v:02x}"))
+        .collect::<String>();
+    println!("{}", json!({"file":file,"media_type":mime,"sha256":hash}));
+    Ok(())
+}
+
 fn run() -> Result<()> {
     let request: Value = serde_json::from_slice(&bounded("request.json", 4 * 1024 * 1024)?)?;
+    if request["operation"] == "render" {
+        return render(&request);
+    }
     let media = request["asset"]["media_type"]
         .as_str()
         .ok_or("media type")?;

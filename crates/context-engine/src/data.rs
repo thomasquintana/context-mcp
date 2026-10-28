@@ -39,6 +39,8 @@ pub struct Profile {
     pub transcribe_role: Option<String>,
     /// Optional provider-artifact read role for non-local output references.
     pub artifact_role: Option<String>,
+    /// Optional exact page/region/clip materialization role.
+    pub media_role: Option<String>,
     /// Summary/entity enrichment role.
     pub enrich_role: String,
     /// Selected compatible embedding space.
@@ -51,6 +53,9 @@ pub struct Profile {
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Tokenizer for evidence budgets: cl100k_base or o200k_base.
+    #[serde(default = "default_token_encoding")]
+    pub token_encoding: String,
     /// Explicit operator allowlist for exact-resource URL acquisition (empty disables it).
     #[serde(default)]
     pub url_hosts: BTreeSet<String>,
@@ -93,6 +98,10 @@ pub struct Config {
     pub workers: usize,
     /// Maximum extracted manifest segments.
     pub max_segments: usize,
+}
+
+fn default_token_encoding() -> String {
+    "cl100k_base".into()
 }
 
 /// Frozen profile and role revisions; contains no endpoint credentials.

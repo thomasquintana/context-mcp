@@ -74,6 +74,9 @@ fn client_config(dir: &std::path::Path, name: &str, endpoint: Value, transport: 
         ("job", "context_job_status"),
         ("cancel", "context_cancel_job"),
         ("retry", "context_retry_job"),
+        ("query", "context_query"),
+        ("expand", "context_expand"),
+        ("history", "context_asset_history"),
     ] {
         let file = dir.join(format!("client-{role}.htlk"));
         std::fs::write(
@@ -237,6 +240,10 @@ graph fixture.{role} {{
             .json(&json!({"idempotency_key":"finalize-http"})).send().await.unwrap().error_for_status().unwrap().json().await.unwrap();
         assert_eq!(succeeded(call(&host,grant.job,"finalize",json!({"upload":transfer["upload"],"idempotency_key":"finalize-http"})).await),finalized);
         wait_job(&host,grant.job,&finalized["job"]).await;
+        let context=succeeded(call(&host,grant.job,"query",json!({"scope":{"kind":"workspace","id":initial.workspace},"query":"transport fixture","token_budget":1})).await);
+        assert_eq!(context["evidence"].as_array().unwrap().len(),1);assert!(context["tokens"]["used"].as_u64().unwrap()<=1);
+        let expanded=succeeded(call(&host,grant.job,"expand",json!({"pointer":{"kind":"content","content":context["evidence"][0]["id"]}})).await);assert_eq!(expanded["body"]["text"],"transport fixture");
+        assert_eq!(succeeded(call(&host,grant.job,"history",json!({"asset":finalized["asset"]})).await)["revisions"].as_array().unwrap().len(),1);
         let rest:Value=setup.get(format!("{base}/jobs/{}",finalized["job"].as_str().unwrap())).bearer_auth(full.secret())
             .send().await.unwrap().error_for_status().unwrap().json().await.unwrap();
         assert_eq!(rest["state"],"succeeded");
@@ -276,16 +283,68 @@ graph fixture.{role} {{
         read_host.shutdown().await.unwrap();
         process.0.kill().unwrap();process.0.wait().unwrap();
 
-        let stdio_config=client_config(dir.path(),"client-stdio",json!({"transport":"stdio","program":binary,
+        let mut stdio_config=client_config(dir.path(),"client-stdio",json!({"transport":"stdio","program":binary,
             "arguments":["serve","--config",config_path,"--transport","stdio"],
             "environment":{"CONTEXT_TEST_DATABASE_URL":database_url,"CONTEXT_STDIO_TOKEN":full.secret(),"RUST_LOG":"warn"}}),"stdio");
+        std::fs::write(dir.path().join("stdio-roundtrip.htlk"),r#"
+ir_version = "0.1"
+graph acceptance.stdio_roundtrip {
+    inputs = { request = json }
+    outputs = { result = json }
+    nodes {
+        arguments = eval(json, {collection = inputs.request.collection,name = inputs.request.name,text = inputs.request.text,idempotency_key = inputs.request.idempotency_key}) {inputs = {request = json}}
+        ingest = call(mcp.tool("context","context_ingest_text"))
+        duplicate_arguments = eval(json, {collection = inputs.request.collection,name = inputs.request.name,text = inputs.request.text,idempotency_key = inputs.request.idempotency_key}) {inputs = {request = json,first = json}}
+        duplicate = call(mcp.tool("context","context_ingest_text"))
+        poll = loop {
+            inputs = {receipt = json}
+            outputs = {progress = json}
+            carried = {receipt = inputs.receipt}
+            body {
+                nodes {
+                    arguments = eval(json, {job = inputs.receipt.job}) {inputs = {receipt = json}}
+                    inspect = call(mcp.tool("context","context_job_status"))
+                }
+                edges {
+                    edge receipt {from = carried.receipt to = arguments.inputs.receipt}
+                    edge arguments {from = arguments.outputs.value to = inspect.inputs.arguments}
+                    edge progress {from = inspect.outputs.value to = outputs.progress}
+                    edge next {from = carried.receipt to = next.receipt}
+                }
+            }
+            until = outputs.progress.state == "succeeded" or outputs.progress.state == "failed" or outputs.progress.state == "cancelled"
+            max_iterations = 100
+        }
+        query_arguments = eval(json, {scope = {kind = "workspace",id = inputs.request.workspace},query = "transport fixture"}) {inputs = {request = json,progress = json}}
+        query = call(mcp.tool("context","context_query"))
+        result = eval(json, {admitted = inputs.admitted,duplicate = inputs.duplicate,progress = inputs.progress,context = inputs.context}) {inputs = {admitted = json,duplicate = json,progress = json,context = json}}
+    }
+    edges {
+        edge request {from = inputs.request to = arguments.inputs.request}
+        edge arguments {from = arguments.outputs.value to = ingest.inputs.arguments}
+        edge request_again {from = inputs.request to = duplicate_arguments.inputs.request}
+        edge first {from = ingest.outputs.value to = duplicate_arguments.inputs.first}
+        edge duplicate_arguments {from = duplicate_arguments.outputs.value to = duplicate.inputs.arguments}
+        edge receipt {from = duplicate.outputs.value to = poll.inputs.receipt}
+        edge query_request {from = inputs.request to = query_arguments.inputs.request}
+        edge progress {from = poll.outputs.progress to = query_arguments.inputs.progress}
+        edge query_arguments {from = query_arguments.outputs.value to = query.inputs.arguments}
+        edge admitted {from = ingest.outputs.value to = result.inputs.admitted}
+        edge duplicate {from = duplicate.outputs.value to = result.inputs.duplicate}
+        edge result_progress {from = poll.outputs.progress to = result.inputs.progress}
+        edge context {from = query.outputs.value to = result.inputs.context}
+        edge result {from = result.outputs.value to = outputs.result}
+    }
+    postconditions = outputs.result.progress.state == "succeeded"
+    limits {max_mcp_calls = 103}
+}
+"#).unwrap();
+        stdio_config.roles.insert("roundtrip".into(),serde_json::from_value(json!({"source":"stdio-roundtrip.htlk","catalogs":dir.path().join("context-stdio.json")})).unwrap());
         let host=WorkflowHost::open(&stdio_config,dir.path(),&[]).await.unwrap();
-        host.grant_job(grant.clone()).unwrap();
+        let mut stdio_grant=grant.clone();stdio_grant.roles.insert("roundtrip".into());host.grant_job(stdio_grant).unwrap();
         assert_eq!(succeeded(call(&host,grant.job,"identity",json!({})).await)["principal"],principal.to_string());
-        let text=json!({"collection":initial.collection,"name":"stdio.txt","text":"transport fixture","idempotency_key":"text-stdio"});
-        let admitted=succeeded(call(&host,grant.job,"text",text.clone()).await);
-        assert_eq!(succeeded(call(&host,grant.job,"text",text).await),admitted);
-        wait_job(&host,grant.job,&admitted["job"]).await;
+        let roundtrip=succeeded(call(&host,grant.job,"roundtrip",json!({"collection":initial.collection,"workspace":initial.workspace,"name":"stdio.txt","text":"transport fixture","idempotency_key":"text-stdio"})).await);
+        assert_eq!(roundtrip["admitted"],roundtrip["duplicate"]);assert_eq!(roundtrip["context"]["evidence"].as_array().unwrap().len(),1,"duplicate text is selected once across transports");
         host.shutdown().await.unwrap();
         auth.revoke_service(principal,full.id).await.unwrap();
         let keys:Vec<String>=sqlx::query_scalar("SELECT o.object_key FROM context.objects o JOIN context.content c ON c.id=o.content WHERE c.workspace=$1")

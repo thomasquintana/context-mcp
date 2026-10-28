@@ -157,8 +157,8 @@
 
 - T4a Full-format operator roles, exact-URL ingestion and combined live-provider
   application verification [completed].
-- T4b Retrieval/context budgets/navigation [in progress].
-- T4c Revisioned memory/reconciliation and cited synthesis [pending].
+- T4b Retrieval/context budgets/navigation [completed].
+- T4c Revisioned memory/reconciliation and cited synthesis [in progress].
 - T4d Transitive physical purge and index rebuild/recovery [pending].
 - Implement complete agreed-format workflows through replaceable graph bindings.
 - Implement chunking/enrichment/indexing, hybrid retrieval, context budgets,
@@ -432,9 +432,17 @@ writing completed evidence); actual production-host video/model ingestion passed
 blue/ocean/vector256/index assertions with real backing services. Six nonpaid
 ingestion tests,21 normal tests, strict fmt/Clippy/rustdoc pass. See docs/processing.md
 for exact image/evidence boundaries and the opt-in paid test. No sibling changes.
-Current task: T4b. Implement permission-aware hybrid retrieval, bounded context maps,
-exact/history expansion, entity navigation and derived page/region/clip operations.
-Then memory/reconciliation/synthesis and physical transitive purge in T4c-d, delivery
+T4b complete: current-permission hybrid search/context maps, real cl100k/o200k BPE
+budgets, transitive source checks, generated entities/relationships, exact/history
+expansion, reprocessing, owner-managed live sharing and durable media materialization.
+Actual PDF/crop/video/audio selections pass independent checks (formats-o4lwuk8x,
+image707838fe...);9 nonpaid backing-service application tests,21 normal tests,
+strict fmt/Clippy/rustdoc pass. Actual binary HTTP/stdio context tests pass; one existing
+HTLK loop retains the stdio session across ingest/poll/query instead of assuming
+run-independent native sessions. No external/toolkit changes or custom adapter.
+Current task: T4c. Implement immutable semantic memory, model-assisted reconciliation,
+explicit authority/supersession/conflict semantics and cited transient/saved synthesis.
+Then physical transitive purge in T4d, delivery
 gates in T5, final plan cleanup and push in T6. Continue through every remaining task.
 Do not expose unimplemented tools or placeholder successes. Preserve exact source
 dependencies, generation fences and the recorded cleanup/receipt-retention boundaries.

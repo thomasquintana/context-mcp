@@ -17,6 +17,20 @@ pub struct AuthorizedTransaction<'a> {
 }
 
 impl Database {
+    /// Authorize an internal cache/job mutation using its public operation permission.
+    ///
+    /// Unlike domain writes, protected read materialization may create derived cache
+    /// records. Callers must not use this to grant arbitrary user knowledge writes.
+    /// # Errors
+    /// Denies missing/currently revoked authority and transaction conflicts.
+    pub async fn authorized_materialize(
+        &self,
+        actor: &Authentication,
+        target: Resource,
+        permission: Permission,
+    ) -> Result<AuthorizedTransaction<'_>> {
+        self.authorized(actor, target, permission, true).await
+    }
     /// Authorize a read-only control view using its action-specific capability.
     ///
     /// Application services use this for upload/job metadata, never source bodies

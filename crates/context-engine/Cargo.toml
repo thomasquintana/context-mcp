@@ -28,6 +28,7 @@ reqwest.workspace = true
 base64.workspace = true
 libc = "0.2"
 tracing = "0.1"
+tiktoken-rs = "=0.12.1"
 
 [dev-dependencies]
 tempfile = "3"

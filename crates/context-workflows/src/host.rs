@@ -461,6 +461,20 @@ impl WorkflowHost {
         Ok(())
     }
 
+    /// Release terminal transient-request policy state after explicit revocation.
+    ///
+    /// Durable jobs retain their authority records; synchronous requests never reuse IDs.
+    /// # Errors
+    /// Rejects active or unknown grants.
+    pub fn release_job(&self, job: JobId) -> Result<()> {
+        let mut jobs = self.policy.jobs.write().map_err(|_| Error::Unauthorized)?;
+        if jobs.get(&job).is_none_or(|grant| grant.active) {
+            return Err(Error::Unauthorized);
+        }
+        jobs.remove(&job);
+        Ok(())
+    }
+
     /// Enable only already-granted cleanup bindings after normal runs are settled.
     ///
     /// # Errors

@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::Row;
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     path::Path,
     sync::{Arc, Weak},
     time::Duration,
@@ -27,27 +27,28 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-struct Job {
-    id: JobId,
-    asset: AssetId,
-    revision: RevisionId,
+pub(crate) struct Job {
+    pub(crate) id: JobId,
+    pub(crate) asset: AssetId,
+    pub(crate) revision: RevisionId,
     principal: PrincipalId,
-    tenant: TenantId,
-    workspace: WorkspaceId,
-    source: ContentId,
-    generation: i64,
-    media_type: String,
+    pub(crate) tenant: TenantId,
+    pub(crate) workspace: WorkspaceId,
+    pub(crate) source: ContentId,
+    pub(crate) generation: i64,
+    pub(crate) media_type: String,
     size: u64,
     sha256: [u8; 32],
     object_key: String,
-    pipeline: Pipeline,
+    pub(crate) pipeline: Pipeline,
     scopes: BTreeSet<Permission>,
     name: String,
     replayable: bool,
+    kind: String,
 }
 
 impl Job {
-    fn actor(&self) -> Authentication {
+    pub(crate) fn actor(&self) -> Authentication {
         Authentication {
             principal: self.principal,
             scopes: self.scopes.clone(),
@@ -61,14 +62,14 @@ enum StageMode {
     NativeInput,
     Cleanup,
 }
-struct Stage<'a> {
+pub(crate) struct Stage<'a> {
     name: String,
     role: &'a str,
     request: Value,
     mode: StageMode,
 }
 impl<'a> Stage<'a> {
-    fn new(name: impl Into<String>, role: &'a str, request: Value) -> Self {
+    pub(crate) fn new(name: impl Into<String>, role: &'a str, request: Value) -> Self {
         Self {
             name: name.into(),
             role,
@@ -76,7 +77,7 @@ impl<'a> Stage<'a> {
             mode: StageMode::Process,
         }
     }
-    fn native(mut self) -> Self {
+    pub(crate) fn native(mut self) -> Self {
         self.mode = StageMode::NativeInput;
         self
     }
@@ -104,6 +105,11 @@ impl Application {
             let plane = plane.clone();
             tasks.push(actix::spawn(async move {
                 Self::worker_loop(application, plane).await;
+            }));
+            let application = Arc::downgrade(self);
+            let plane = self.data_plane()?.clone();
+            tasks.push(actix::spawn(async move {
+                Self::operation_loop(application, plane).await;
             }));
         }
         let application = Arc::downgrade(self);
@@ -155,7 +161,7 @@ impl Application {
         let mut controls = plane.controls.lock().await;
         let active = controls.keys().copied().map(Uuid::from).collect::<Vec<_>>();
         let mut tx = self.database.transaction().await?;
-        let row=sqlx::query("SELECT j.id FROM context.jobs j JOIN context.workflow_authority a ON a.job=j.id WHERE a.active AND j.kind IN ('ingest','reprocess') AND j.state IN ('accepted','running') AND NOT(j.id=ANY($1)) ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1")
+        let row=sqlx::query("SELECT j.id FROM context.jobs j JOIN context.workflow_authority a ON a.job=j.id WHERE a.active AND j.kind IN ('ingest','reprocess','media') AND j.state IN ('accepted','running') AND NOT(j.id=ANY($1)) ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1")
             .bind(active).fetch_optional(&mut *tx).await.map_err(context_storage::Error::from)?;
         let Some(row) = row else { return Ok(None) };
         let id: Uuid = row.try_get("id").map_err(context_storage::Error::from)?;
@@ -185,6 +191,7 @@ impl Application {
             .try_get("sha256")
             .map_err(context_storage::Error::from)?;
         Ok(Job {
+            kind: row.try_get("kind").map_err(context_storage::Error::from)?,
             replayable: row
                 .try_get("replayable")
                 .map_err(context_storage::Error::from)?,
@@ -234,7 +241,7 @@ impl Application {
         })
     }
 
-    async fn live(&self, job: &Job) -> Result<()> {
+    pub(crate) async fn live(&self, job: &Job) -> Result<()> {
         let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.jobs j JOIN context.assets a ON a.id=j.asset JOIN context.resources r ON r.id=a.id WHERE j.id=$1 AND j.state='running' AND j.generation=a.generation AND NOT r.purging AND j.deadline>now())")
             .bind(Uuid::from(job.id)).fetch_one(self.database.pool()).await.map_err(context_storage::Error::from)?;
         if !valid {
@@ -243,14 +250,22 @@ impl Application {
         // This is the durable admitted intent's scope ceiling, not a cached bearer.
         // Token expiry does not undo accepted jobs; current resource grants still do.
         self.database
-            .authorized_view(&job.actor(), Resource::Asset(job.asset), Permission::Ingest)
+            .authorized_view(
+                &job.actor(),
+                Resource::Asset(job.asset),
+                if job.kind == "media" {
+                    Permission::Read
+                } else {
+                    Permission::Ingest
+                },
+            )
             .await?
             .commit()
             .await?;
         Ok(())
     }
 
-    async fn stage(
+    pub(crate) async fn stage(
         &self,
         plane: &Plane,
         job: &Job,
@@ -436,6 +451,9 @@ impl Application {
             let _lock = plane.tenant_lock(job.tenant).await;
             return self.publish_indexed(plane, &job, count as usize).await;
         }
+        if job.kind == "media" && stage == "rendered" {
+            return self.publish_media(plane, &job).await;
+        }
         let directory = plane.directory(id);
         let mut builder = std::fs::DirBuilder::new();
         builder.recursive(true);
@@ -463,6 +481,9 @@ impl Application {
                     plane.config.max_upload_bytes,
                 )
                 .await?;
+        }
+        if job.kind == "media" {
+            return self.process_media(plane, &job, cancel).await;
         }
         let mut chunks = Vec::new();
         let mut cursor = Value::Null;
@@ -622,6 +643,21 @@ impl Application {
         {
             return Err(Error::Contract);
         }
+        let entity_ids: BTreeMap<_, _> = enriched
+            .entities
+            .iter()
+            .map(|entity| (entity.name.clone(), ContentId::new()))
+            .collect();
+        if entity_ids.len() != enriched.entities.len()
+            || enriched.relationships.iter().any(|r| {
+                !entity_ids.contains_key(&r.from)
+                    || !entity_ids.contains_key(&r.to)
+                    || r.relationship.is_empty()
+                    || r.relationship.len() > 128
+            })
+        {
+            return Err(Error::Contract);
+        }
         let mut bodies = Vec::new();
         for (index, (text, location, origin)) in chunks.into_iter().enumerate() {
             let embedding = self
@@ -648,7 +684,8 @@ impl Application {
                 available: true,
             };
             let id = ContentId::new();
-            bodies.push((id,json!({"text":text,"sources":[source],"origin":origin,"embedding":embedding,"tokens":text.len()}),embedding,origin));
+            let tokens = plane.tokenizer.encode_ordinary(&text).len();
+            bodies.push((id,json!({"text":text,"sources":[source],"origin":origin,"embedding":embedding,"tokens":tokens}),embedding,origin));
         }
         let _lock = plane.tenant_lock(job.tenant).await;
         self.live(&job).await?;
@@ -667,11 +704,30 @@ impl Application {
                 .await
                 .map_err(context_storage::Error::from)?;
         }
+        for entity in &enriched.entities {
+            let id = entity_ids[&entity.name];
+            let relationships=enriched.relationships.iter().filter(|r|r.from==entity.name ||r.to==entity.name).map(|r|json!({"from":entity_ids[&r.from],"to":entity_ids[&r.to],"relationship":r.relationship})).collect::<Vec<_>>();
+            let source = SourceReference {
+                asset: job.asset,
+                revision: job.revision,
+                location: context_core::content::SourceLocation::Asset,
+                available: true,
+            };
+            sqlx::query("INSERT INTO context.content(id,workspace,asset,revision,kind,origin,body,producer_job) VALUES($1,$2,$3,$4,'entity','generated',$5,$6)")
+                .bind(Uuid::from(id)).bind(Uuid::from(job.workspace)).bind(Uuid::from(job.asset)).bind(Uuid::from(job.revision))
+                .bind(json!({"name":entity.name,"entity_type":entity.entity_type,"relationships":relationships,"sources":[source]})).bind(Uuid::from(job.id)).execute(&mut *tx).await.map_err(context_storage::Error::from)?;
+            sqlx::query("INSERT INTO context.dependencies VALUES($1,$2,'derivation')")
+                .bind(Uuid::from(job.source))
+                .bind(Uuid::from(id))
+                .execute(&mut *tx)
+                .await
+                .map_err(context_storage::Error::from)?;
+        }
         sqlx::query(
             "UPDATE context.content SET body=body||$2::jsonb WHERE id=$1 AND NOT published",
         )
         .bind(Uuid::from(job.source))
-        .bind(json!({"metadata":metadata,"enrichment":enriched}))
+        .bind(json!({"metadata":metadata,"enrichment":{"origin":"generated","document":enriched}}))
         .execute(&mut *tx)
         .await
         .map_err(context_storage::Error::from)?;
@@ -810,7 +866,7 @@ impl Application {
         Ok(bytes)
     }
 
-    async fn clear_staged(&self, plane: &Plane, job: &Job) -> Result<()> {
+    pub(crate) async fn clear_staged(&self, plane: &Plane, job: &Job) -> Result<()> {
         let ids: Vec<Uuid> = sqlx::query_scalar(
             "SELECT id FROM context.content WHERE producer_job=$1 AND NOT published AND kind<>'source'",
         )
@@ -829,6 +885,20 @@ impl Application {
         for id in &ids {
             index.delete((*id).into()).await?;
         }
+        let keys: Vec<String> =
+            sqlx::query_scalar("SELECT object_key FROM context.objects WHERE content=ANY($1)")
+                .bind(&ids)
+                .fetch_all(self.database.pool())
+                .await
+                .map_err(context_storage::Error::from)?;
+        for key in &keys {
+            plane.blobs.delete(key).await?;
+        }
+        sqlx::query("DELETE FROM context.objects WHERE object_key=ANY($1)")
+            .bind(keys)
+            .execute(self.database.pool())
+            .await
+            .map_err(context_storage::Error::from)?;
         sqlx::query("DELETE FROM context.content WHERE id=ANY($1)")
             .bind(ids)
             .execute(self.database.pool())
@@ -1042,7 +1112,7 @@ impl Application {
             .copied()
             .map(Uuid::from)
             .collect::<Vec<_>>();
-        let pending:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM context.jobs WHERE kind IN ('ingest','reprocess') AND state IN ('failed','cancelled') AND detail->>'cleanup_pending'='true' AND NOT(id=ANY($1)) LIMIT 4")
+        let pending:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM context.jobs WHERE kind IN ('ingest','reprocess','media') AND state IN ('failed','cancelled') AND detail->>'cleanup_pending'='true' AND NOT(id=ANY($1)) LIMIT 4")
             .bind(active).fetch_all(self.database.pool()).await.map_err(context_storage::Error::from)?;
         for id in pending {
             let id = JobId::from(id);
@@ -1132,7 +1202,7 @@ fn chunk(text: &str, max: usize) -> Vec<String> {
     chunks
 }
 
-async fn read_file(directory: &Path, name: &str, max: u64) -> Result<Vec<u8>> {
+pub(crate) async fn read_file(directory: &Path, name: &str, max: u64) -> Result<Vec<u8>> {
     if name.is_empty()
         || name.len() > 128
         || name.starts_with('.')

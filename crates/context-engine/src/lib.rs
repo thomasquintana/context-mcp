@@ -2,7 +2,11 @@
 
 pub mod data;
 pub mod jobs;
+pub mod media;
+mod operations;
 mod plane;
+pub mod retrieval;
+pub mod sharing;
 pub mod uploads;
 pub mod urls;
 mod worker;
@@ -314,6 +318,7 @@ impl Application {
             }
         }
         self.workflows.shutdown().await?;
+        self.stop_operations().await?;
         self.database.close().await;
         Ok(())
     }

@@ -82,6 +82,158 @@ pub(crate) fn intent_digest(args: &CreateUpload, media: &str, hash: &[u8; 32]) -
 }
 
 impl Application {
+    /// Explicitly reprocess a successful immutable source as a new revision/profile.
+    ///
+    /// # Errors
+    /// Requires Ingest authority and the expected current revision; never overwrites
+    /// an existing revision or automatically refreshes a remote resource.
+    pub async fn reprocess(
+        &self,
+        actor: &Authentication,
+        asset: AssetId,
+        expected: RevisionId,
+        profile: Option<String>,
+        key: &str,
+    ) -> Result<Value> {
+        if key.is_empty() || key.len() > 200 {
+            return Err(Error::Invalid);
+        }
+        let hash: [u8; 32] = Sha256::digest(
+            serde_json::to_vec(&(asset, expected, &profile)).map_err(|_| Error::Invalid)?,
+        )
+        .into();
+        let mut view = self
+            .database
+            .authorized_write(actor, Resource::Asset(asset), Permission::Ingest)
+            .await?;
+        if let Some(value) =
+            existing_receipt(view.transaction(), actor.principal, "reprocess", key, &hash).await?
+        {
+            view.commit().await?;
+            return Ok(value);
+        }
+        let resumed = existing_receipt(
+            view.transaction(),
+            actor.principal,
+            "reprocess_intent",
+            key,
+            &hash,
+        )
+        .await?
+        .is_some();
+        receipt(
+            view.transaction(),
+            actor.principal,
+            "reprocess_intent",
+            key,
+            &hash,
+            &json!({}),
+        )
+        .await?;
+        let row=sqlx::query("SELECT a.current_revision,v.sha256,v.size_bytes,v.media_type,c.body,r.parent,r.owner FROM context.assets a JOIN context.resources r ON r.id=a.id JOIN context.revisions v ON v.asset=a.id JOIN context.content c ON c.id=v.content WHERE a.id=$1 AND v.id=$2 AND c.published")
+            .bind(Uuid::from(asset)).bind(Uuid::from(expected)).fetch_optional(&mut **view.transaction()).await.map_err(context_storage::Error::from)?.ok_or(context_storage::Error::Conflict)?;
+        let body: Value = row.try_get("body").map_err(context_storage::Error::from)?;
+        let bytes: Vec<u8> = row
+            .try_get("sha256")
+            .map_err(context_storage::Error::from)?;
+        let digest: [u8; 32] = bytes.try_into().map_err(|_| Error::Contract)?;
+        let size: i64 = row
+            .try_get("size_bytes")
+            .map_err(context_storage::Error::from)?;
+        let args = CreateUpload {
+            collection: row
+                .try_get::<Uuid, _>("parent")
+                .map_err(context_storage::Error::from)?
+                .into(),
+            asset: Some(asset),
+            name: body["name"].as_str().ok_or(Error::Contract)?.into(),
+            media_type: row
+                .try_get("media_type")
+                .map_err(context_storage::Error::from)?,
+            size_bytes: size as u64,
+            sha256: digest.iter().map(|b| format!("{b:02x}")).collect(),
+            profile,
+            idempotency_key: format!("{key}:reprocess-upload"),
+        };
+        if resumed &&let Some(child)=sqlx::query("SELECT u.receipt AS upload,u.request_digest AS upload_digest,f.receipt,f.request_digest AS finalize_digest FROM context.receipts u JOIN context.receipts f ON f.principal=u.principal WHERE u.principal=$1 AND u.operation='create_upload' AND u.idempotency_key=$2 AND f.operation='finalize_upload' AND f.idempotency_key=$3")
+            .bind(Uuid::from(actor.principal)).bind(&args.idempotency_key).bind(format!("{key}:reprocess-finalize")).fetch_optional(&mut **view.transaction()).await.map_err(context_storage::Error::from)? {
+                let uploaded:Value=child.try_get("upload").map_err(context_storage::Error::from)?;
+                let upload:Uuid=uploaded["upload"].as_str().ok_or(Error::Contract)?.parse().map_err(|_|Error::Contract)?;
+                if child.try_get::<Vec<u8>,_>("upload_digest").map_err(context_storage::Error::from)?!=intent_digest(&args,&args.media_type,&digest)? ||child.try_get::<Vec<u8>,_>("finalize_digest").map_err(context_storage::Error::from)?!=Sha256::digest(upload.as_bytes()).as_slice(){return Err(context_storage::Error::Conflict.into());}
+                let value:Value=child.try_get("receipt").map_err(context_storage::Error::from)?;
+                receipt(view.transaction(),actor.principal,"reprocess",key,&hash,&value).await?;view.commit().await?;return Ok(value);
+            }
+        if row
+            .try_get::<Option<Uuid>, _>("current_revision")
+            .map_err(context_storage::Error::from)?
+            != Some(Uuid::from(expected))
+        {
+            return Err(context_storage::Error::Conflict.into());
+        }
+        view.commit().await?;
+        let transfer = self.create_upload(actor, args).await?;
+        if transfer["finalized"] != true {
+            let plane = self.data_plane()?;
+            let owner = row
+                .try_get::<Uuid, _>("owner")
+                .map_err(context_storage::Error::from)?;
+            let _lock = plane.tenant_lock(owner.into()).await;
+            self.database
+                .authorized_view(actor, Resource::Asset(asset), Permission::Ingest)
+                .await?
+                .commit()
+                .await?;
+            let target: String = sqlx::query_scalar(
+                "SELECT object_key FROM context.uploads WHERE id=$1 AND principal=$2",
+            )
+            .bind(
+                Uuid::parse_str(transfer["upload"].as_str().ok_or(Error::Contract)?)
+                    .map_err(|_| Error::Contract)?,
+            )
+            .bind(Uuid::from(actor.principal))
+            .fetch_one(self.database.pool())
+            .await
+            .map_err(context_storage::Error::from)?;
+            self.data_plane()?
+                .blobs
+                .promote_verified(
+                    body["object_key"].as_str().ok_or(Error::Contract)?,
+                    &target,
+                    size as u64,
+                    &digest,
+                    self.data_plane()?.config.max_upload_bytes,
+                )
+                .await?;
+        }
+        let value = self
+            .finalize_upload_expected(
+                actor,
+                transfer["upload"]
+                    .as_str()
+                    .ok_or(Error::Contract)?
+                    .parse()
+                    .map_err(|_| Error::Contract)?,
+                &format!("{key}:reprocess-finalize"),
+                Some(expected),
+            )
+            .await?;
+        let mut view = self
+            .database
+            .authorized_write(actor, Resource::Asset(asset), Permission::Ingest)
+            .await?;
+        receipt(
+            view.transaction(),
+            actor.principal,
+            "reprocess",
+            key,
+            &hash,
+            &value,
+        )
+        .await?;
+        view.commit().await?;
+        Ok(value)
+    }
+
     /// Reserve a tracked upload and separately reserved immutable source destination.
     ///
     /// # Errors
@@ -303,6 +455,17 @@ impl Application {
         upload: Uuid,
         key: &str,
     ) -> Result<Value> {
+        self.finalize_upload_expected(actor, upload, key, None)
+            .await
+    }
+
+    async fn finalize_upload_expected(
+        &self,
+        actor: &Authentication,
+        upload: Uuid,
+        key: &str,
+        expected: Option<RevisionId>,
+    ) -> Result<Value> {
         let plane = self.data_plane()?;
         let request_hash: [u8; 32] = Sha256::digest(upload.as_bytes()).into();
         if let Some(row)=sqlx::query("SELECT request_digest,receipt FROM context.receipts WHERE principal=$1 AND operation='finalize_upload' AND idempotency_key=$2")
@@ -366,6 +529,18 @@ impl Application {
             .await?;
             permission.commit().await?;
             return Ok(result);
+        }
+        if let Some(expected) = expected {
+            let matches: bool =
+                sqlx::query_scalar("SELECT current_revision=$2 FROM context.assets WHERE id=$1")
+                    .bind(Uuid::from(asset))
+                    .bind(Uuid::from(expected))
+                    .fetch_one(&mut **tx)
+                    .await
+                    .map_err(context_storage::Error::from)?;
+            if !matches {
+                return Err(context_storage::Error::Conflict.into());
+            }
         }
         let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.uploads u JOIN context.assets a ON a.id=u.asset WHERE u.id=$1 AND u.principal=$2 AND u.expires_at>now() AND a.generation=u.generation AND NOT u.finalized)")
             .bind(upload).bind(Uuid::from(actor.principal)).fetch_one(&mut **tx).await.map_err(context_storage::Error::from)?;

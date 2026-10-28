@@ -8,7 +8,10 @@ services and authorization rules.
 Implemented tools: `context_identity`, `context_resource`,
 `context_create_collection`, `context_create_upload`, `context_finalize_upload`,
 `context_ingest_text`, `context_job_status`, `context_cancel_job`, and
-`context_retry_job`. Their exact descriptors are exported by `context-mcp catalog`.
+`context_retry_job`, `context_ingest_url`, `context_query`, `context_expand`,
+`context_extract_media`, `context_asset_history`, `context_reprocess`, and
+`context_set_access`. Their exact descriptors are exported by `context-mcp catalog`.
+See context-services.md for retrieval/budget/history/navigation and sharing contracts.
 See ingestion.md for implemented job/role contracts and server-foundation.md for
 setup. The remaining capabilities below await their application milestones.
 

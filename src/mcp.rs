@@ -104,6 +104,29 @@ struct TextArguments {
 struct JobArguments {
     job: JobId,
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExpandArguments {
+    pointer: context_core::context::Pointer,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HistoryArguments {
+    asset: AssetId,
+    before: Option<context_core::ids::RevisionId>,
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReprocessArguments {
+    asset: AssetId,
+    expected_revision: context_core::ids::RevisionId,
+    profile: Option<String>,
+    idempotency_key: String,
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct JobControlArguments {
@@ -207,6 +230,51 @@ impl ServerHandler for McpServer {
                 let args: JobArguments = serde_json::from_value(arguments)
                     .map_err(|_| ErrorData::invalid_params("invalid job arguments", None))?;
                 self.application.job_status(&actor, args.job).await
+            }
+            "context_query" => {
+                let args: context_engine::retrieval::Query = serde_json::from_value(arguments)
+                    .map_err(|_| ErrorData::invalid_params("invalid query arguments", None))?;
+                self.application
+                    .query(&actor, args)
+                    .await
+                    .map(|value| json!(value))
+            }
+            "context_expand" => {
+                let args: ExpandArguments = serde_json::from_value(arguments)
+                    .map_err(|_| ErrorData::invalid_params("invalid exploration pointer", None))?;
+                self.application.expand(&actor, args.pointer).await
+            }
+            "context_extract_media" => {
+                let args: context_engine::media::ExtractMedia =
+                    serde_json::from_value(arguments)
+                        .map_err(|_| ErrorData::invalid_params("invalid media selection", None))?;
+                self.application.extract_media(&actor, args).await
+            }
+            "context_asset_history" => {
+                let args: HistoryArguments = serde_json::from_value(arguments)
+                    .map_err(|_| ErrorData::invalid_params("invalid history arguments", None))?;
+                self.application
+                    .asset_history(&actor, args.asset, args.before, args.limit.unwrap_or(20))
+                    .await
+            }
+            "context_reprocess" => {
+                let args: ReprocessArguments = serde_json::from_value(arguments).map_err(|_| {
+                    ErrorData::invalid_params("invalid reprocessing arguments", None)
+                })?;
+                self.application
+                    .reprocess(
+                        &actor,
+                        args.asset,
+                        args.expected_revision,
+                        args.profile,
+                        &args.idempotency_key,
+                    )
+                    .await
+            }
+            "context_set_access" => {
+                let args: context_engine::sharing::SetAccess = serde_json::from_value(arguments)
+                    .map_err(|_| ErrorData::invalid_params("invalid access arguments", None))?;
+                self.application.set_access(&actor, args).await
             }
             "context_cancel_job" | "context_retry_job" => {
                 let args: JobControlArguments =
@@ -316,6 +384,42 @@ pub fn tools() -> Vec<Tool> {
             false,
         ),
         (
+            "context_query",
+            "Return a ranked, deduplicated, permission-aware context map with exact citations and an optional model-token evidence budget. History requires explicit opt-in.",
+            json!({"type":"object","required":["scope","query"],"properties":{"scope":{"type":"object","required":["kind","id"],"properties":{"kind":{"enum":["tenant","workspace","collection","asset"]},"id":id},"additionalProperties":false},"query":{"type":"string","minLength":1,"maxLength":4096},"limit":{"type":"integer","minimum":1,"maximum":100},"token_budget":{"type":"integer","minimum":1,"maximum":65536},"historical":{"type":"boolean"},"space":{"type":"string"}},"additionalProperties":false}),
+            true,
+        ),
+        (
+            "context_expand",
+            "Expand a typed exact-revision content, asset, page, media or entity pointer, rechecking all current source protections.",
+            json!({"type":"object","required":["pointer"],"properties":{"pointer":{"type":"object","required":["kind"],"properties":{"kind":{"enum":["content","asset","page","media","entity"]},"content":id,"asset":id,"revision":id,"entity":id,"page":{"type":"integer","minimum":1},"location":{"type":"object"}},"additionalProperties":false}},"additionalProperties":false}),
+            true,
+        ),
+        (
+            "context_extract_media",
+            "Admit durable exact-source PDF-page/image-region/media-clip extraction. Poll the job for its result content pointer, then expand it for a short-lived authorized byte URL.",
+            json!({"type":"object","required":["asset","revision","location","idempotency_key"],"properties":{"asset":id,"revision":id,"location":{"type":"object"},"profile":{"type":"string"},"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false}),
+            false,
+        ),
+        (
+            "context_asset_history",
+            "List bounded published immutable asset revisions and exact-revision pointers under current permissions.",
+            json!({"type":"object","required":["asset"],"properties":{"asset":id,"before":id,"limit":{"type":"integer","minimum":1,"maximum":100}},"additionalProperties":false}),
+            true,
+        ),
+        (
+            "context_reprocess",
+            "Explicitly reprocess the expected current immutable source into a new revision using a selected profile. A failed replacement preserves prior successful evidence.",
+            json!({"type":"object","required":["asset","expected_revision","idempotency_key"],"properties":{"asset":id,"expected_revision":id,"profile":{"type":"string"},"idempotency_key":{"type":"string","minLength":1,"maxLength":200}},"additionalProperties":false}),
+            false,
+        ),
+        (
+            "context_set_access",
+            "Owner-managed complete explicit grant/inheritance replacement under an expected ACL version. Empty grants revoke explicit sharing; ownership is unchanged.",
+            json!({"type":"object","required":["resource","expected_acl_version","inherit","grants","idempotency_key"],"properties":{"resource":{"type":"object","required":["kind","id"],"properties":{"kind":{"enum":["tenant","workspace","collection","asset"]},"id":id},"additionalProperties":false},"expected_acl_version":{"type":"integer","minimum":1},"inherit":{"type":"boolean"},"grants":{"type":"array","maxItems":128,"items":{"type":"object","required":["recipient","permissions"],"properties":{"recipient":{"type":"object","required":["kind","id"],"properties":{"kind":{"enum":["principal","tenant","workspace"]},"id":id},"additionalProperties":false},"permissions":{"type":"array","minItems":1,"items":{"enum":["read","ingest","write_memory","synthesize","share","purge"]}}},"additionalProperties":false}},"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false}),
+            false,
+        ),
+        (
             "context_cancel_job",
             "Fence an owned ingestion job and request existing HTLK cancellation/cleanup. Published terminal success cannot be overwritten.",
             json!({"type":"object","required":["job","idempotency_key"],"properties":{"job":id,"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false}),
@@ -348,7 +452,7 @@ pub fn tools() -> Vec<Tool> {
                     .read_only(read)
                     .destructive(name == "context_cancel_job")
                     .idempotent(true)
-                    .open_world(false),
+                    .open_world(name == "context_ingest_url"),
             )
         })
         .collect()

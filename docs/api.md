@@ -1,6 +1,6 @@
-# Application and workflow contracts — draft 0.1
+# Application and workflow contracts — 0.1
 
-These are target contracts, not a declaration that the service endpoints exist.
+These logical contracts map to the implemented tools and permanent service documents.
 Public MCP tools return object-valued `structuredContent`, publish input/output
 schemas, and expose redacted typed failures. HTTP/CLI use the same application
 services and authorization rules.
@@ -19,7 +19,7 @@ Permanent deletion/repair tools are `context_purge`, `context_purge_status`, and
 `context_rebuild_index`; see permanent-purge.md for closure, fencing and physical
 cleanup completion, including approved content-free upload fences.
 See ingestion.md for implemented job/role contracts and server-foundation.md for
-setup. The remaining capabilities below await their application milestones.
+setup. Exact exported descriptors are the wire-level input/output contracts.
 
 ## Public operations
 
@@ -34,7 +34,7 @@ setup. The remaining capabilities below await their application milestones.
 | Write/update memory | Workspace, subject, description, typed/text value, evidence, expected version | New revision and current/conflicted view |
 | Reconcile memory | Candidate revisions, authorized rules, expected view | New revision or preserved conflict |
 | Synthesize | Question and evidence/scope, bounded generation options | Transient cited answer |
-| Save generated artifact | Explicit answer/provenance references and destination | Saved generated record with dependencies |
+| Save generated artifact | Explicit `context_synthesize` save flag, workspace, evidence and stable key | Saved generated record with all-input dependencies |
 | Share/revoke | Owned resource, recipient, permissions, expected ACL revision | Updated live grant/ACL revision |
 | Purge | Owned target, expected generation, idempotency key | Durable purge receipt; completed only after cleanup |
 

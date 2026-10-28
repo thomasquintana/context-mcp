@@ -1,8 +1,8 @@
 # context-mcp specification — draft 0.1
 
 This document states the agreed target behavior. Implementation and measured
-verification are tracked separately in [acceptance.md](acceptance.md) and the
-temporary task plan. A specified capability is not a claim of implementation.
+verification are tracked separately in [acceptance.md](acceptance.md) and
+[verification.md](verification.md). Measured limits/boundaries accompany implementation.
 
 ## 1. Deployment and execution boundaries
 

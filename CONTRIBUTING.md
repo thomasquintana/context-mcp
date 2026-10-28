@@ -34,7 +34,9 @@ gaps as explicit decisions rather than silently manufacturing compatibility.
 
 ## Task delivery
 
-The temporary implementation plan records requirements and verification evidence.
-Read it before work and after context compaction; update it and commit after every
-completed task. Remove it only when all acceptance criteria are met, then commit
-cleanup and push completed commits to origin.
+Permanent requirements/contracts live in docs/specification.md and docs/api.md;
+docs/acceptance.md and docs/verification.md record measured evidence and boundaries.
+Read AGENTS.md and the relevant permanent service/deployment docs when resuming work.
+Commit each requested completed task after verification, reviewing status/diff/history
+and staging only intended changes. Run tools/audit_release.py and push only when
+requested. The original temporary implementation plan is retired.

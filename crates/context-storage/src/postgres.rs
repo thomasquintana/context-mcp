@@ -213,9 +213,10 @@ pub(crate) async fn chain_in(
             grants,
         });
     }
-    if chain.first().map(|n| n.resource) != Some(resource)
-        || !matches!(chain.last().map(|n| n.resource), Some(Resource::Tenant(_)))
-    {
+    if chain.first().map(|n| n.resource) != Some(resource) {
+        return Err(Error::Unavailable);
+    }
+    if !matches!(chain.last().map(|n| n.resource), Some(Resource::Tenant(_))) {
         return Err(Error::Invalid);
     }
     Ok(chain)

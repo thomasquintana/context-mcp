@@ -155,6 +155,11 @@ async fn inherited_cross_tenant_acl_and_token_scope_are_both_enforced() {
 async fn immutable_owner_and_ancestor_contracts_fail_at_the_database() {
     let db = database().await;
     let h = hierarchy(&db).await;
+    assert!(matches!(
+        db.access_chain(Resource::Asset(Uuid::from(h.workspace).into()))
+            .await,
+        Err(Error::Unavailable)
+    ));
     let mut tx = db.transaction().await.unwrap();
     let error = insert_resource(
         &mut tx,

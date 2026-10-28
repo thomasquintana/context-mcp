@@ -5,6 +5,11 @@ Public MCP tools return object-valued `structuredContent`, publish input/output
 schemas, and expose redacted typed failures. HTTP/CLI use the same application
 services and authorization rules.
 
+Implemented foundation tools: `context_identity`, `context_resource`, and
+`context_create_collection`. Their exact descriptors are exported by `context-mcp
+catalog`. The remaining contracts below are target capabilities pending their
+application milestones. See server-foundation.md for executable setup and evidence.
+
 ## Public operations
 
 | Logical operation | Input contract | Output contract |

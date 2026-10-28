@@ -135,6 +135,8 @@
 - T3c — Authentication, authorization, transport and durable jobs [in progress].
   - T3c1 Provider-neutral authentication and transactional ACL decisions [completed].
   - T3c2 MCP/HTTP/stdio interfaces, uploads and worker recovery [in progress].
+    - T3c2a Authenticated transports, operator CLI and resource services [completed].
+    - T3c2b Upload admission, job state and durable processing [in progress].
 
 - Implement migrations and PostgreSQL repositories, S3/MinIO and Typesense adapters.
 - Implement configured token issuer/audience validation, stable issuer/subject
@@ -334,10 +336,32 @@
   strict rustdoc and diagnostic Python syntax passed. External tests remain explicit:
   7PG+2S3/Typesense+2auth/Keycloak+1native-host. The two auth tests (including actual
   RSA signing-key rotation and cached refresh) passed; no fixture-only proof claim.
+- T3c1 commitd6d8971. T3c2a added context-engine and actual root server binary with
+  MCP2025-11-25 HTTP/stdio transports, per-operation authentication, RFC9728
+  metadata/challenge, host/origin/CORS/body/deadline checks and bounded shutdown.
+  Current tools: context_identity, context_resource, context_create_collection.
+  CLI: serve/catalog/migrate/bootstrap/issue-credential (private create-only output,
+  revoke on file-write error). Operator-role example references both initial
+  providers. No data ingestion/retrieval/memory completion claim yet.
+- Migration0002 adds resource labels, memory subject uniqueness and authoritative
+  workflow/stage records. Application restores job/principal/scope-owner checked
+  grants before starting the shared runtime. Collection mutation retries only pure
+  DB serialization/deadlock conflicts before external effects.
+- T3c2a actual binary test passed: HTLK-compiled clients over HTTP and stdio verify
+  authenticated identity, resource isolation, missing-auth challenge/metadata,
+  scope limits, revoked credential rejection, sequential/concurrent idempotency
+  with one DB row. Fixture application roles are pure and not provider proof.
+  fmt, strict Clippy, ordinary workspace tests16 and strict rustdoc passed. Actual
+  PostgreSQL wrong-resource-kind/immutable-parent check passed. See
+  docs/server-foundation.md. Source/env credentials remain untracked.
 
 ## Resume checkpoint
 
-Current task: T3c2. Next: implement request transports and worker admission.
+Current task: T3c2b. Next: commit the verified transport foundation, then implement
+S3 upload sessions/finalization, immutable source handling, job admission/status/
+cancellation and durable staged workers. Full media roles, retrieval/memory/
+synthesis/purge follow in T4. Do not expose unimplemented tools or placeholder
+successes. Preserve exact source dependencies and generation fences.
 Use the shared production host (not spike fixed policy) and authenticate every
 HTTP/stdio operation. Serializable admission retries are DB-only before effects.
 Provider orphan limitation is accepted; no adaptation needed. Preserve this plan;

@@ -26,3 +26,6 @@
 - Add provider-neutral JWT/JWKS and RFC7662 authentication, hashed scoped service
   credentials and shared-transaction resource authorization. Verify actual Keycloak
   key rotation, introspection, token rejection and PostgreSQL revocation/race cases.
+- Add authenticated MCP HTTP/stdio server foundation, protected-resource discovery,
+  explicit operator CLI, resource metadata/collection services and actual-binary
+  HTLK-driven transport/isolation/idempotency verification.

@@ -7,6 +7,16 @@
 
 pub mod host;
 
+/// Validate and canonicalize bounded operator JSON using HTLK's existing ingress.
+///
+/// # Errors
+/// Rejects duplicate fields, unsafe numbers and invalid representation limits.
+pub fn host_json(bytes: &[u8]) -> Result<Vec<u8>> {
+    Ok(JsonDocument::new(bytes, &Limits::default())?
+        .as_bytes()
+        .to_vec())
+}
+
 use htlk::{
     compiler::{
         Compiler, CompilerCapabilities, CompilerConfig, FrontendLimits, MCPCatalogInputs, analyzer,

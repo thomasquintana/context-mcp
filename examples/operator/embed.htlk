@@ -1,0 +1,23 @@
+ir_version = "0.1"
+
+-- Provider-specific construction/projection lives here, outside application logic.
+graph operator.embedding {
+    inputs = { request = json }
+    outputs = { result = json }
+    nodes {
+        arguments = eval(json, { model = "text-embedding-3-small", input = inputs.request.text, dimensions = 256 }) {
+            inputs = { request = json }
+        }
+        embed = call(mcp.tool("llm", "embed"))
+        result = eval(json, { embedding = inputs.response.response.data[0].embedding, space = "text-embedding-3-small:256:v1" }) {
+            inputs = { response = json }
+        }
+    }
+    edges {
+        edge request { from = inputs.request to = arguments.inputs.request }
+        edge arguments { from = arguments.outputs.value to = embed.inputs.arguments }
+        edge response { from = embed.outputs.value to = result.inputs.response }
+        edge result { from = result.outputs.value to = outputs.result }
+    }
+    limits { max_mcp_calls = 1 }
+}

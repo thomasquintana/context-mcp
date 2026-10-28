@@ -1,0 +1,13 @@
+ir_version = "0.1"
+
+-- Foundation diagnostic role; native extraction roles are delivered separately.
+graph operator.sandbox_metadata {
+    inputs = { request = json }
+    outputs = { result = json }
+    nodes { list = call(mcp.tool("sandbox", "sandbox_list")) }
+    edges {
+        edge request { from = inputs.request to = list.inputs.arguments }
+        edge result { from = list.outputs.value to = outputs.result }
+    }
+    limits { max_mcp_calls = 1 }
+}

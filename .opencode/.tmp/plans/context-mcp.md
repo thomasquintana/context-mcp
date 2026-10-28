@@ -72,6 +72,11 @@
 - HTLK execution history is explicitly outside context-mcp purge scope. Keep minimal
   content-free application purge/audit records. Fence late processing/publication so
   deleted data cannot be recreated.
+- User accepted the reference sandbox's reported destroy success despite observed
+  surviving containers. Use saved IDs and existing HTLK destroy calls; provider
+  container lifetime is the provider's responsibility. Preserve the bug evidence.
+  No watchdog, TTL wrapper, Docker cleanup bypass or sibling change is approved or
+  needed for this project. Application-managed staging/content still gets purged.
 
 ## Repository prerequisites
 
@@ -100,17 +105,18 @@
 - Verify formatting, domain invariants, compilation, and public documentation.
 - Update plan and commit.
 
-### T2 — Existing-HTLK integration spike [in progress]
+### T2 — Existing-HTLK provider integration spike [completed]
 
 - T2a — Existing-interface host, exact discovery and metadata invocation [completed].
 - T2b-media — Actual FFmpeg/frame/audio extraction and normal destruction [completed].
 - T2b-model — Live model calls and independent value checks [completed after account activation].
-- T2c — Actual provider restart/cleanup probe [completed investigation; gap needs direction].
+- T2c — Actual provider restart/cleanup probe [completed; limitation accepted by user].
 
 - Resolve dependency using unchanged public HTLK APIs and existing graph/catalog/
   deployment configuration. Record the exact compatible versions/descriptors.
 - Compile/admit/run a real graph against the initial providers. Exercise input
-  staging, sandbox media work, model processing, publication, and retrieval.
+  staging, sandbox media work and model processing. Full application publication,
+  retrieval and purge verification belongs to T4/T5 once the service exists.
 - Verify protocol/output compatibility, bounded payloads, session continuity,
   cancellation/recovery, nonzero process exit handling, and cleanup behavior.
 - Inspect existing implementations before promising guarantees: sandbox session
@@ -120,7 +126,11 @@
 - Unit/mock tests are supplementary, not substitutes for the real-provider spike.
 - Update plan and commit successful work, or record an explicit blocker.
 
-### T3 — Service foundation and authoritative persistence [pending]
+### T3 — Service foundation and authoritative persistence [in progress]
+
+- T3a — PostgreSQL schema/repositories and S3/Typesense clients [in progress].
+- T3b — Shared production HTLK host and role contracts [pending].
+- T3c — Authentication, authorization, transport and durable jobs [pending].
 
 - Implement migrations and PostgreSQL repositories, S3/MinIO and Typesense adapters.
 - Implement configured token issuer/audience validation, stable issuer/subject
@@ -263,12 +273,16 @@
   Clippy; all workspace tests (9 passed); strict rustdoc; Python syntax compilation
   for all three harnesses. Sibling Git working trees clean; llm-mcp/.env ignored.
   Task commit subject: Verify live media and model workflows through unchanged HTLK.
+- User decision: accepts successful destroy(saved ID) receipts, treats surviving
+  containers as a replaceable provider bug, and does not want an extra recovery/TTL
+  mechanism. Preserve evidence; proceed with existing protocols. T2 completed at
+  provider-integration scope; production application E2E remains explicitly T4/T5.
+  Prior live-verification commit: 2f85d68.
 
 ## Resume checkpoint
 
-Current task: T2. Local checks and real model/media investigations are complete at
-this checkpoint. Next: obtain user direction on the actual sandbox recovery gap
-before adding any lifecycle/recovery/TTL mechanism. Account
-activation resolved429; preserve the failure history. Full application pipeline and
-service tasks remain pending. Preserve this plan; cleanup/final push happen only
+Current task: T3a. Next: implement PostgreSQL authority/migrations and S3/Typesense
+clients with real backing-service verification. Continue to production HTLK hosting
+using existing public interfaces and role contracts. Provider orphan limitation is
+accepted; no adaptation needed. Preserve this plan; cleanup/final push happen only
 after full verification.

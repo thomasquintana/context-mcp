@@ -195,16 +195,18 @@ Evidence: `target/providers/live-apebe2qm/lifecycle-evidence.json`. Create graph
 Recovery graph:
 `sha256:98fd57d18d1463871a85b2c3bf54a87688363e883925b3868a97fa55f579baf8`.
 
-## Remaining gates and user decisions
+## Accepted provider limitation and remaining gates
 
 - Live model access is verified after activation. Preserve failed-request and failed
   image-semantic evidence separately from successful inference.
-- Obtain direction on sandbox lifetime/recovery guarantees. The reference provider
-  cannot recover ownership with its existing session tools after process restart.
-  No extra mechanism, alternative cleanup channel, custom adapter, provider change
-  or external-project edit is approved or implemented.
+- The user explicitly accepted destroy(saved ID) success receipts despite surviving
+  containers, treating this as a reference-provider bug to address by replacing the
+  provider in future. Production uses existing HTLK cleanup calls and receipts.
+  Physical container lifetime belongs to the provider. The observed bug remains
+  documented; no recovery/TTL wrapper or direct Docker cleanup path is added.
 - Validate nonzero exits, actual cancellation/process termination, interrupted
   staging, combined application publication/retrieval/purge, and both relevant
   transports. Unit/local-fixture tests cannot replace those gates.
 
-The full ingestion spike remains incomplete until those gates have evidence.
+The provider-integration spike is complete at this scope. Full application ingestion,
+publication, retrieval and managed-content purge remain subsequent acceptance gates.

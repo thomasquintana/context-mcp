@@ -103,9 +103,12 @@ state under a lock. Physical output writes require equivalent fencing and cleanu
 checking a generation only at final publication does not prevent orphan data.
 
 Sandbox profiles expose only the job's staged files and bounded resources. Validate
-actual command exit status as well as MCP success. Cancellation and cleanup must
-be verified against the real provider; transport teardown alone does not prove
-native process termination or deletion of external objects.
+actual command exit status as well as MCP success. Use existing HTLK cleanup calls
+with saved IDs and accept provider success receipts. The user accepts the measured
+reference-provider bug where a container can survive a reported destroy after
+restart. Physical container lifetime belongs to the replaceable provider; the
+application still deletes its managed content/staging. Receipt success does not
+establish independently verified native-process termination.
 
 ## 5. Retrieval and navigation
 

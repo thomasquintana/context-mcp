@@ -9,7 +9,8 @@ the integration host has verified unchanged HTLK discovery against both initial
 providers and compiled read-only invocation against the actual sandbox server.
 Native FFmpeg processing, normal sandbox cleanup, and actual OpenAI generation,
 embedding and transcription through HTLK are verified. Sandbox restart recovery
-has a measured capability gap requiring a lifecycle decision.
+has a measured provider bug which the user accepts; cleanup uses existing destroy
+calls and provider success receipts.
 The application ingestion pipeline remains incomplete. See the
 [integration evidence](docs/integration-spike.md).
 See [the specification](docs/specification.md) and

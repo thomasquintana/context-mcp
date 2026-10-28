@@ -1,0 +1,35 @@
+{
+  "servers": {
+    "llm": {
+      "deployment_id": "initial-model-provider",
+      "implementation_name": "llm-mcp",
+      "implementation_version": "0.1.0",
+      "tools": ["generate", "classify", "embed", "transcribe"]
+    },
+    "sandbox": {
+      "deployment_id": "initial-sandbox-provider",
+      "implementation_name": "mcp-sandbox",
+      "implementation_version": "0.2.0",
+      "tools": ["profile_list", "sandbox_list", "sandbox_create", "sandbox_exec", "sandbox_destroy"]
+    }
+  },
+  "endpoints": {
+    "initial-model-provider": {
+      "transport": "stdio",
+      "program": "../llm-mcp/target/debug/llm-mcp",
+      "arguments": ["serve"],
+      "environment": {
+        "LLM_MCP_AUTH": "api_key",
+        "LLM_MCP_TRANSPORT": "stdio",
+        "OPENAI_API_KEY": "catalog-discovery-only-not-a-real-key"
+      }
+    },
+    "initial-sandbox-provider": {
+      "transport": "stdio",
+      "program": "target/providers/mcp-sandbox",
+      "arguments": [],
+      "environment": {},
+      "inherit_environment": ["ALLOW_DIRS", "SANDBOX_PROFILES_DIR"]
+    }
+  }
+}

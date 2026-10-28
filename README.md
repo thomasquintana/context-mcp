@@ -5,7 +5,10 @@ versioned semantic memory, and cited synthesis. Apache-2.0.
 
 **Implementation status:** the provider-independent domain contracts and executable
 invariants are implemented. The server and processing pipeline are under development;
-the next milestone validates the unchanged HTLK runtime with real MCP providers.
+the integration host has verified unchanged HTLK discovery against both initial
+providers and compiled read-only invocation against the actual sandbox server.
+Full media/model processing remains pending. See the
+[integration evidence](docs/integration-spike.md).
 See [the specification](docs/specification.md) and
 [acceptance criteria](docs/acceptance.md) for the target behavior and verification.
 

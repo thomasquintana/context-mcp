@@ -9,8 +9,8 @@ claim needs observed evidence; fixture coverage cannot establish provider behavi
 | A02 | Credential scope and inherited/cross-tenant grants both required | Domain unit test; persistence/HTTP verification pending |
 | A03 | Terminal jobs immutable; stale generation cannot publish | Domain unit tests; transactional verification pending |
 | A04 | Transitive mixed-source purge; citation-only assertions survive | Domain unit test including cyclic lineage; physical cleanup pending |
-| A05 | Real unchanged HTLK compilation/admission/execution | Pending integration spike |
-| A06 | Real initial sandbox execution and model processing | Pending; no fixture-only substitution |
+| A05 | Real unchanged HTLK compilation/admission/execution | Verified public-API integration tests and actual sandbox metadata graph; see integration-spike.md |
+| A06 | Real initial sandbox execution and model processing | Both actual servers discovered; sandbox metadata calls verified; media and live model processing pending |
 | A07 | Complete agreed media-format matrix | Specified; implementation/format fixtures pending |
 | A08 | All-or-nothing revision publication and durable restart recovery | Pending |
 | A09 | OIDC validation, service credentials and current resource authorization | Pending |

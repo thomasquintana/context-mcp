@@ -1,0 +1,15 @@
+{
+  "source": "sandbox_metadata.htlk",
+  "catalogs": "../../target/providers/catalogs.json",
+  "inputs": {},
+  "idempotency_key": "initial-real-sandbox-metadata",
+  "endpoints": {
+    "initial-sandbox-provider": {
+      "transport": "stdio",
+      "program": "target/providers/mcp-sandbox",
+      "arguments": [],
+      "environment": {},
+      "inherit_environment": ["ALLOW_DIRS", "SANDBOX_PROFILES_DIR"]
+    }
+  }
+}

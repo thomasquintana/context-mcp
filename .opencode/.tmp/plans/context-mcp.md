@@ -102,6 +102,9 @@
 
 ### T2 — Existing-HTLK integration spike [in progress]
 
+- T2a — Existing-interface host, exact discovery and metadata invocation [completed].
+- T2b — Real media/model pipeline and lifecycle validation [blocked on environment].
+
 - Resolve dependency using unchanged public HTLK APIs and existing graph/catalog/
   deployment configuration. Record the exact compatible versions/descriptors.
 - Compile/admit/run a real graph against the initial providers. Exercise input
@@ -176,17 +179,39 @@
   --all-features --locked -- -D warnings; cargo test --workspace --all-features
   --locked (5 passed); RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features
   --no-deps --locked; cargo package --workspace --allow-dirty --locked --target-dir
-  target/package-t1 (both packages built from their archives). Task commit follows.
+  target/package-t1 (both packages built from their archives). Commit `2534c25`.
 - T2 research: existing HTLK NativeMcpAdapter supports the necessary stdio/HTTP
   calls without a custom adapter. Pin inspected HTLK revision
   3448acb5dc7cebef4d08ef37bb79757fea780659. Actual providers inspected at llm-mcp
   a9b6d2fe3fed686dd2ca2fb67591613f0cf44cb8 and mcp-sandbox
   8c649a415ba7be6aa6e15a4dc51e56dc5990eae0. These are research observations,
   not executed-provider verification.
+- T2a: added context-workflows operator-run host using existing NativeMcpAdapter,
+  Compiler, Runtime and SqliteStore APIs. Explicit discovery preserves full exact
+  descriptors. No custom adapter, shim or external-project edit. Downloaded official
+  sandbox v0.2.0 Darwin arm64 to ignored target/providers and verified archive SHA256
+  3c48cd9ff8980b4cd81210e7b9559e4ba0ad0f7e8331c3121ed566ac191efda0.
+- T2a real-provider evidence: HTLK discovery succeeded for llm-mcp's four model
+  tools and sandbox's five selected tools. Compiled/admitted sandbox_metadata.htlk
+  returned profiles=[] and sessions=[] against actual mcp-sandbox; fingerprint
+  sha256:0aec62b60537ac88ec3be74135eda529e9c62125afb35ef691d054210cb42862.
+  Artifacts: target/providers/catalogs.json and sandbox-metadata-result.json. No
+  upstream model call or container was invoked; those capabilities remain unproved.
+- T2a checks: fmt, strict workspace/all-target Clippy, all workspace tests (8 passed,
+  including public-runtime replay/admission and typed-input rejection), strict
+  rustdoc. Added docs/integration-spike.md with exact reproduction and scope.
+- T2b environment blockers: no OPENAI_API_KEY configured. llm-mcp auth status reports
+  ChatGPT sign-in, but OAuth mode lacks embedding/transcription. Do not access or
+  copy credential values. Need an existing configured model endpoint or provider
+  access for required capabilities. Docker daemon responds, but docker pull of
+  debian:bookworm-slim failed after 120s in credential helper; no media image exists.
+  Ask user to provision dependencies/direction before using a workaround. The
+  integration phase and entire implementation are not marked complete.
 
 ## Resume checkpoint
 
-Current task: T2. Next: commit T1, read the existing HTLK capability runner, then
-build a context-owned integration host using unchanged public HTLK APIs. Build any
-provider binaries into context-mcp/target, never edit or generate files in siblings.
-All MCP discovery/calls must use HTLK. Validate real providers before any adaptation.
+Current task: T2b. Next: commit completed T2a work, then ask for configured live
+model-provider access and a functioning Docker image pull (or existing usable media
+image). Resume real sandbox/media/model validation using existing interfaces. Do
+not add adaptations or alter siblings. Preserve this plan while tasks remain;
+cleanup/final push happen only after full verification.

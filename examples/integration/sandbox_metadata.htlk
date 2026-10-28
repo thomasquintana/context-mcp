@@ -1,0 +1,19 @@
+ir_version = "0.1"
+
+-- Actual-provider discovery/read-only invocation; not a media-processing test.
+graph context.sandbox_metadata {
+    inputs = {}
+    outputs = { sessions = json, profiles = json }
+    nodes {
+        arguments = eval(json, {})
+        sessions = call(mcp.tool("sandbox", "sandbox_list"))
+        profiles = call(mcp.tool("sandbox", "profile_list"))
+    }
+    edges {
+        edge session_arguments { from = arguments.outputs.value to = sessions.inputs.arguments }
+        edge profile_arguments { from = arguments.outputs.value to = profiles.inputs.arguments }
+        edge sessions { from = sessions.outputs.value to = outputs.sessions }
+        edge profiles { from = profiles.outputs.value to = outputs.profiles }
+    }
+    limits { max_mcp_calls = 2 }
+}

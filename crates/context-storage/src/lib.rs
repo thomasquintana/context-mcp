@@ -4,6 +4,7 @@
 //! authorize the caller before mutations; database constraints independently fence
 //! ancestry, revision publication and idempotent state changes.
 
+pub mod authorization;
 pub mod blobs;
 pub mod postgres;
 pub mod search;

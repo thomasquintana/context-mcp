@@ -1,6 +1,6 @@
 //! Explicit resource grants, inherited permissions, and tenant-safe authorization.
 
-use crate::ids::{AssetId, CollectionId, PrincipalId, TenantId, WorkspaceId};
+use crate::ids::{AssetId, CollectionId, CredentialId, PrincipalId, TenantId, WorkspaceId};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -83,6 +83,21 @@ pub struct AccessContext {
     pub workspaces: BTreeSet<WorkspaceId>,
     /// Effective credential capabilities, even when a resource ACL is broader.
     pub scopes: BTreeSet<Permission>,
+}
+
+/// Host-authenticated session facts; never construct from ordinary tool arguments.
+///
+/// There is intentionally no Deserialize implementation. Token validation
+/// establishes these facts; PostgreSQL rechecks service credential state and
+/// resolves memberships/grants in the protected operation's transaction.
+#[derive(Clone, Debug)]
+pub struct Authentication {
+    /// Authenticated human or service-account identity.
+    pub principal: PrincipalId,
+    /// Upper bound on effective API capabilities.
+    pub scopes: BTreeSet<Permission>,
+    /// Service credential whose live database state must also permit the operation.
+    pub credential: Option<CredentialId>,
 }
 
 impl AccessContext {

@@ -16,11 +16,11 @@ Resource identity, owner and ancestry are immutable. Parent types/owners and
 purging-ancestor admission are checked by PostgreSQL. Source/memory revisions reject
 updates. Sharing modifies explicit grants, not ownership.
 
-Repositories are trusted infrastructure, not an authorization API. A caller must
-establish identity and authorize the mutation. Resource-chain and membership reads
-are available for domain policy hydration; the request service must use a consistent
-transaction for permission facts and protected data. These primitives alone do not
-establish the finished HTTP/MCP authentication boundary.
+Repositories are trusted infrastructure. `authorized_read`/`authorized_write`
+resolve credential state, membership and grants in the same protected-data snapshot.
+Standalone resource-chain/membership hydration is useful for diagnostics, not a
+replacement for this transactional boundary. The request service still authenticates
+each operation and applies its action-specific invariants. See authentication.md.
 
 `existing_receipt` locks the principal/operation/key before effects. The transaction
 then performs the authoritative mutation and stores its receipt. Reuse with another

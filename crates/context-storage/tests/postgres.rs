@@ -1,7 +1,7 @@
 //! Actual PostgreSQL acceptance tests; run explicitly with the test database URL.
 
 use context_core::{
-    access::{Permission, Resource},
+    access::{Authentication, Permission, Resource},
     ids::{AssetId, CollectionId, ContentId, PrincipalId, RevisionId, TenantId, WorkspaceId},
 };
 use context_storage::Error;
@@ -328,5 +328,112 @@ async fn concurrent_workers_claim_each_pending_job_once() {
     let mut tx = db.transaction().await.unwrap();
     assert!(claim_job(&mut tx).await.unwrap().is_none());
     tx.commit().await.unwrap();
+    db.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires CONTEXT_TEST_DATABASE_URL pointing at isolated PostgreSQL"]
+async fn membership_and_grant_reads_never_mix_different_time_snapshots() {
+    let db = database().await;
+    let a = hierarchy(&db).await;
+    let b = hierarchy(&db).await;
+    let actor = Authentication {
+        principal: a.principal,
+        scopes: BTreeSet::from([Permission::Read]),
+        credential: None,
+    };
+    sqlx::query("INSERT INTO context.memberships VALUES($1,$2)")
+        .bind(Uuid::from(a.principal))
+        .bind(Uuid::from(b.owner))
+        .execute(db.pool())
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO context.grants VALUES($1,'tenant',$2,ARRAY['read'])")
+        .bind(Uuid::from(a.asset))
+        .bind(Uuid::from(b.owner))
+        .execute(db.pool())
+        .await
+        .unwrap();
+    let mut snapshot = db
+        .authorized_read(&actor, Resource::Asset(a.asset))
+        .await
+        .unwrap();
+    let mut change = db.transaction().await.unwrap();
+    sqlx::query("DELETE FROM context.memberships WHERE principal=$1 AND resource=$2")
+        .bind(Uuid::from(a.principal))
+        .bind(Uuid::from(b.owner))
+        .execute(&mut *change)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO context.grants VALUES($1,'tenant',$2,ARRAY['read'])")
+        .bind(Uuid::from(b.asset))
+        .bind(Uuid::from(b.owner))
+        .execute(&mut *change)
+        .await
+        .unwrap();
+    change.commit().await.unwrap();
+    // The old snapshot sees membership but not the new grant. A fresh snapshot
+    // sees the new grant but not membership. Neither ever permits the second asset.
+    assert!(matches!(
+        snapshot
+            .authorize(Resource::Asset(b.asset), Permission::Read)
+            .await,
+        Err(Error::Unavailable)
+    ));
+    snapshot.commit().await.unwrap();
+    assert!(matches!(
+        db.authorized_read(&actor, Resource::Asset(b.asset)).await,
+        Err(Error::Unavailable)
+    ));
+    db.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires CONTEXT_TEST_DATABASE_URL pointing at isolated PostgreSQL"]
+async fn service_credential_scope_revocation_and_expiry_are_rechecked_in_the_data_transaction() {
+    use sha2::{Digest, Sha256};
+    let db = database().await;
+    let h = hierarchy(&db).await;
+    let credential = Uuid::now_v7();
+    let digest = Sha256::digest(credential.as_bytes()).to_vec();
+    sqlx::query("INSERT INTO context.grants VALUES($1,'principal',$2,ARRAY['read','purge'])")
+        .bind(Uuid::from(h.asset))
+        .bind(Uuid::from(h.principal))
+        .execute(db.pool())
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO context.credentials(id,principal,digest,scopes,expires_at) VALUES($1,$2,$3,ARRAY['read'],now()+interval '1 hour')")
+        .bind(credential).bind(Uuid::from(h.principal)).bind(digest).execute(db.pool()).await.unwrap();
+    let actor = Authentication {
+        principal: h.principal,
+        scopes: BTreeSet::from([Permission::Read, Permission::Purge]),
+        credential: Some(credential.into()),
+    };
+    db.authorized_read(&actor, Resource::Asset(h.asset))
+        .await
+        .unwrap()
+        .commit()
+        .await
+        .unwrap();
+    assert!(matches!(
+        db.authorized_write(&actor, Resource::Asset(h.asset), Permission::Purge)
+            .await,
+        Err(Error::Unavailable)
+    ));
+    sqlx::query("UPDATE context.credentials SET revoked=true WHERE id=$1")
+        .bind(credential)
+        .execute(db.pool())
+        .await
+        .unwrap();
+    assert!(matches!(
+        db.authorized_read(&actor, Resource::Asset(h.asset)).await,
+        Err(Error::Unavailable)
+    ));
+    sqlx::query("UPDATE context.credentials SET revoked=false,expires_at=now()-interval '1 second' WHERE id=$1")
+        .bind(credential).execute(db.pool()).await.unwrap();
+    assert!(matches!(
+        db.authorized_read(&actor, Resource::Asset(h.asset)).await,
+        Err(Error::Unavailable)
+    ));
     db.close().await;
 }

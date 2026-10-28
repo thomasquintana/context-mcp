@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/context-core", "crates/context-workflows", "crates/context-storage"]
+members = ["crates/context-core", "crates/context-workflows", "crates/context-storage", "crates/context-auth"]
 resolver = "3"
 
 [workspace.package]
@@ -11,6 +11,7 @@ repository = "https://github.com/thomasquintana/context-mcp"
 
 [workspace.dependencies]
 context-core = { version = "=0.1.0", path = "crates/context-core" }
+context-storage = { path = "crates/context-storage" }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 thiserror = "2"
@@ -21,9 +22,13 @@ sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-toki
 tokio = { version = "=1.53.3", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync", "time", "signal"] }
 sha2 = "=0.10.9"
 object_store = { version = "=0.14.2", default-features = false, features = ["aws"] }
-reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "json", "stream"] }
+reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "json", "stream", "form"] }
 bytes = "1"
 futures-util = "0.3"
+jsonwebtoken = { version = "=11.1.0", default-features = false, features = ["aws_lc_rs"] }
+secrecy = "0.10"
+getrandom = "0.4"
+base64 = "0.23"
 
 [workspace.lints.rust]
 missing_docs = "warn"

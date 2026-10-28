@@ -82,34 +82,12 @@ impl Database {
         principal: PrincipalId,
         scopes: BTreeSet<Permission>,
     ) -> Result<AccessContext> {
-        let exists: bool =
-            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.principals WHERE id=$1)")
-                .bind(Uuid::from(principal))
-                .fetch_one(&self.pool)
-                .await?;
-        if !exists {
-            return Err(Error::Unavailable);
-        }
-        let rows = sqlx::query("SELECT r.id,r.kind FROM context.memberships m JOIN context.resources r ON r.id=m.resource WHERE m.principal=$1 AND NOT r.purging")
-            .bind(Uuid::from(principal)).fetch_all(&self.pool).await?;
-        let mut context = AccessContext {
-            principal,
-            scopes,
-            tenants: BTreeSet::new(),
-            workspaces: BTreeSet::new(),
-        };
-        for row in rows {
-            let id: Uuid = row.try_get("id")?;
-            match row.try_get::<&str, _>("kind")? {
-                "tenant" => {
-                    context.tenants.insert(id.into());
-                }
-                "workspace" => {
-                    context.workspaces.insert(id.into());
-                }
-                _ => return Err(Error::Invalid),
-            }
-        }
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+            .execute(&mut *tx)
+            .await?;
+        let context = context_in(&mut tx, principal, scopes).await?;
+        tx.commit().await?;
         Ok(context)
     }
 
@@ -122,57 +100,7 @@ impl Database {
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
             .execute(&mut *tx)
             .await?;
-        let rows = sqlx::query("WITH RECURSIVE chain AS (SELECT *,0 AS depth FROM context.resources WHERE id=$1 UNION ALL SELECT r.*,c.depth+1 FROM context.resources r JOIN chain c ON r.id=c.parent WHERE c.depth<4) SELECT * FROM chain ORDER BY depth")
-            .bind(resource_id(resource)).fetch_all(&mut *tx).await?;
-        if rows.is_empty() || rows.iter().any(|row| row.get::<bool, _>("purging")) {
-            return Err(Error::Unavailable);
-        }
-        let mut chain = Vec::with_capacity(rows.len());
-        for row in rows {
-            let id: Uuid = row.try_get("id")?;
-            let grants = sqlx::query(
-                "SELECT recipient_kind,recipient,permissions FROM context.grants WHERE resource=$1",
-            )
-            .bind(id)
-            .fetch_all(&mut *tx)
-            .await?;
-            let grants = grants
-                .into_iter()
-                .map(|grant| {
-                    let recipient: Uuid = grant.try_get("recipient")?;
-                    Ok(Grant {
-                        recipient: match grant.try_get::<&str, _>("recipient_kind")? {
-                            "principal" => Recipient::Principal(recipient.into()),
-                            "tenant" => Recipient::Tenant(recipient.into()),
-                            "workspace" => Recipient::Workspace(recipient.into()),
-                            _ => return Err(Error::Invalid),
-                        },
-                        permissions: grant
-                            .try_get::<Vec<String>, _>("permissions")?
-                            .iter()
-                            .map(|value| {
-                                serde_json::from_value(Value::String(value.clone()))
-                                    .map_err(Error::from)
-                            })
-                            .collect::<Result<_>>()?,
-                    })
-                })
-                .collect::<Result<Vec<_>>>()?;
-            chain.push(AccessNode {
-                resource: decode_resource(row.try_get("kind")?, id)?,
-                owner: row.try_get::<Uuid, _>("owner")?.into(),
-                inherit: row.try_get("inherit")?,
-                grants,
-            });
-        }
-        if chain.first().map(|node| node.resource) != Some(resource)
-            || !matches!(
-                chain.last().map(|node| node.resource),
-                Some(Resource::Tenant(_))
-            )
-        {
-            return Err(Error::Invalid);
-        }
+        let chain = chain_in(&mut tx, resource).await?;
         tx.commit().await?;
         Ok(chain)
     }
@@ -201,6 +129,96 @@ fn decode_resource(kind: &str, id: Uuid) -> Result<Resource> {
         "asset" => Ok(Resource::Asset(id.into())),
         _ => Err(Error::Invalid),
     }
+}
+
+pub(crate) async fn context_in(
+    tx: &mut Transaction<'_, Postgres>,
+    principal: PrincipalId,
+    scopes: BTreeSet<Permission>,
+) -> Result<AccessContext> {
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.principals WHERE id=$1)")
+            .bind(Uuid::from(principal))
+            .fetch_one(&mut **tx)
+            .await?;
+    if !exists {
+        return Err(Error::Unavailable);
+    }
+    let rows = sqlx::query("SELECT r.id,r.kind FROM context.memberships m JOIN context.resources r ON r.id=m.resource WHERE m.principal=$1 AND NOT r.purging")
+        .bind(Uuid::from(principal)).fetch_all(&mut **tx).await?;
+    let mut context = AccessContext {
+        principal,
+        scopes,
+        tenants: BTreeSet::new(),
+        workspaces: BTreeSet::new(),
+    };
+    for row in rows {
+        let id: Uuid = row.try_get("id")?;
+        match row.try_get::<&str, _>("kind")? {
+            "tenant" => {
+                context.tenants.insert(id.into());
+            }
+            "workspace" => {
+                context.workspaces.insert(id.into());
+            }
+            _ => return Err(Error::Invalid),
+        }
+    }
+    Ok(context)
+}
+
+pub(crate) async fn chain_in(
+    tx: &mut Transaction<'_, Postgres>,
+    resource: Resource,
+) -> Result<Vec<AccessNode>> {
+    let rows = sqlx::query("WITH RECURSIVE chain AS (SELECT *,0 AS depth FROM context.resources WHERE id=$1 UNION ALL SELECT r.*,c.depth+1 FROM context.resources r JOIN chain c ON r.id=c.parent WHERE c.depth<4) SELECT * FROM chain ORDER BY depth")
+        .bind(resource_id(resource)).fetch_all(&mut **tx).await?;
+    if rows.is_empty() || rows.iter().any(|row| row.get::<bool, _>("purging")) {
+        return Err(Error::Unavailable);
+    }
+    let mut chain = Vec::with_capacity(rows.len());
+    for row in rows {
+        let id: Uuid = row.try_get("id")?;
+        let grants = sqlx::query(
+            "SELECT recipient_kind,recipient,permissions FROM context.grants WHERE resource=$1",
+        )
+        .bind(id)
+        .fetch_all(&mut **tx)
+        .await?;
+        let grants = grants
+            .into_iter()
+            .map(|row| {
+                let recipient: Uuid = row.try_get("recipient")?;
+                Ok(Grant {
+                    recipient: match row.try_get::<&str, _>("recipient_kind")? {
+                        "principal" => Recipient::Principal(recipient.into()),
+                        "tenant" => Recipient::Tenant(recipient.into()),
+                        "workspace" => Recipient::Workspace(recipient.into()),
+                        _ => return Err(Error::Invalid),
+                    },
+                    permissions: row
+                        .try_get::<Vec<String>, _>("permissions")?
+                        .into_iter()
+                        .map(|name| {
+                            serde_json::from_value(Value::String(name)).map_err(Error::from)
+                        })
+                        .collect::<Result<_>>()?,
+                })
+            })
+            .collect::<Result<_>>()?;
+        chain.push(AccessNode {
+            resource: decode_resource(row.try_get("kind")?, id)?,
+            owner: row.try_get::<Uuid, _>("owner")?.into(),
+            inherit: row.try_get("inherit")?,
+            grants,
+        });
+    }
+    if chain.first().map(|n| n.resource) != Some(resource)
+        || !matches!(chain.last().map(|n| n.resource), Some(Resource::Tenant(_)))
+    {
+        return Err(Error::Invalid);
+    }
+    Ok(chain)
 }
 
 /// Insert an immutable hierarchy node using an already-authorized transaction.

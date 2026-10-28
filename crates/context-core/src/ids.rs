@@ -68,6 +68,10 @@ identifier!(
     "An authenticated human or service-account identity."
 );
 identifier!(MemoryId, "A stable logical semantic memory.");
+identifier!(
+    CredentialId,
+    "A revocable service credential, distinct from its secret."
+);
 identifier!(MemoryRevisionId, "An immutable semantic-memory revision.");
 identifier!(
     JobId,

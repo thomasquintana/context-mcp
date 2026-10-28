@@ -133,8 +133,8 @@
   - T3a2 S3/Typesense clients and live verification [completed].
 - T3b — Shared production HTLK host and role contracts [completed].
 - T3c — Authentication, authorization, transport and durable jobs [in progress].
-  - T3c1 Provider-neutral authentication and transactional ACL decisions [in progress].
-  - T3c2 MCP/HTTP/stdio interfaces, uploads and worker recovery [pending].
+  - T3c1 Provider-neutral authentication and transactional ACL decisions [completed].
+  - T3c2 MCP/HTTP/stdio interfaces, uploads and worker recovery [in progress].
 
 - Implement migrations and PostgreSQL repositories, S3/MinIO and Typesense adapters.
 - Implement configured token issuer/audience validation, stable issuer/subject
@@ -317,12 +317,28 @@
   ports/providers, scalar result rejection. Actual sandbox metadata/readiness also
   passed under the production policy. Total normal workspace tests14 passed;
   fmt, strict all-target Clippy and strict rustdoc passed. See docs/workflow-host.md.
+- T3b commit085f276. T3c1 code now includes Authentication (non-deserializable host
+  facts), context-auth JWT/JWKS +RFC7662 discovery/verification, bounded key caching
+  and rotation, random256bit scoped agent credentials stored only asSHA256, owner
+  revocation and finite expiry. AuthorizedTransaction keeps membership/grants,
+  service-token status/scopes and protected reads in one snapshot; write mode is
+  serializable and locked. No JWT tenant claim becomes a grant.
+- T3c1 actual tests: PostgreSQL suite7 passes including a never-coexistent
+  membership/new-grant race and revoked/expired/scoped credentials at read time.
+  Actual Keycloak26.8.1 on58080 JWT, ID-token/wrong-audience/tamper rejection,
+  introspection and real signing-key rotation passed. Local realm fixture required
+  standard subject and separate API+introspector audience mappers (no relaxed
+  validation/no external code change). Auth unit2 and credentialDB test pass.
+  See docs/authentication.md. Fixture contains only public development values.
+- T3c1 final checks: fmt, strict all-target Clippy, normal workspace tests16 passed,
+  strict rustdoc and diagnostic Python syntax passed. External tests remain explicit:
+  7PG+2S3/Typesense+2auth/Keycloak+1native-host. The two auth tests (including actual
+  RSA signing-key rotation and cached refresh) passed; no fixture-only proof claim.
 
 ## Resume checkpoint
 
-Current task: T3c1. Next: commit the verified production workflow host, then implement
-provider-neutral authentication, hashed service credentials and shared-transaction
-membership/grant/protected-read authorization. Primitive hydration calls alone are
-not sufficient. Continue to server transports and durable workers afterward.
+Current task: T3c2. Next: implement request transports and worker admission.
+Use the shared production host (not spike fixed policy) and authenticate every
+HTTP/stdio operation. Serializable admission retries are DB-only before effects.
 Provider orphan limitation is accepted; no adaptation needed. Preserve this plan;
 cleanup/final push happen only after full verification.

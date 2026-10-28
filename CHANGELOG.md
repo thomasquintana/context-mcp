@@ -23,3 +23,6 @@
 - Add a shared long-lived HTLK role host with trusted job grants/provenance labels,
   exact role and provider readiness checks, revocation, protected output reads,
   durable reopening and orderly shutdown through unchanged public interfaces.
+- Add provider-neutral JWT/JWKS and RFC7662 authentication, hashed scoped service
+  credentials and shared-transaction resource authorization. Verify actual Keycloak
+  key rotation, introspection, token rejection and PostgreSQL revocation/race cases.

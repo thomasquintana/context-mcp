@@ -1,0 +1,53 @@
+{
+  "realm": "context-dev",
+  "enabled": true,
+  "registrationAllowed": false,
+  "accessTokenLifespan": 300,
+  "clientScopes": [
+    {"name":"basic","protocol":"openid-connect","attributes":{"include.in.token.scope":"false"},"protocolMappers":[
+      {"name":"sub","protocol":"openid-connect","protocolMapper":"oidc-sub-mapper","config":{"access.token.claim":"true","introspection.token.claim":"true"}},
+      {"name":"auth_time","protocol":"openid-connect","protocolMapper":"oidc-usersessionmodel-note-mapper","config":{"user.session.note":"AUTH_TIME","claim.name":"auth_time","jsonType.label":"long","access.token.claim":"true","id.token.claim":"true","introspection.token.claim":"true"}}
+    ]},
+    {"name":"context:read","protocol":"openid-connect","attributes":{"include.in.token.scope":"true"}},
+    {"name":"context:ingest","protocol":"openid-connect","attributes":{"include.in.token.scope":"true"}},
+    {"name":"context:memory:write","protocol":"openid-connect","attributes":{"include.in.token.scope":"true"}},
+    {"name":"context:synthesize","protocol":"openid-connect","attributes":{"include.in.token.scope":"true"}},
+    {"name":"context:share","protocol":"openid-connect","attributes":{"include.in.token.scope":"true"}},
+    {"name":"context:purge","protocol":"openid-connect","attributes":{"include.in.token.scope":"true"}}
+  ],
+  "clients": [{
+    "clientId":"context-development-client",
+    "enabled":true,
+    "publicClient":false,
+    "secret":"context-development-client-secret",
+    "directAccessGrantsEnabled":true,
+    "standardFlowEnabled":true,
+    "redirectUris":["http://localhost:8089/*"],
+    "defaultClientScopes":["basic","profile","email","context:read","context:ingest","context:memory:write","context:synthesize","context:share","context:purge"],
+    "protocolMappers":[{
+      "name":"context-api-audience",
+      "protocol":"openid-connect",
+      "protocolMapper":"oidc-audience-mapper",
+      "config":{
+        "included.custom.audience":"http://localhost:8089/mcp",
+        "access.token.claim":"true",
+        "id.token.claim":"false",
+        "introspection.token.claim":"true"
+      }
+    },{
+      "name":"context-introspection-client-audience",
+      "protocol":"openid-connect",
+      "protocolMapper":"oidc-audience-mapper",
+      "config":{"included.client.audience":"context-development-client","access.token.claim":"true","id.token.claim":"false","introspection.token.claim":"true"}
+    }]
+  }],
+  "users":[{
+    "username":"developer",
+    "enabled":true,
+    "emailVerified":true,
+    "firstName":"Context",
+    "lastName":"Developer",
+    "email":"developer@example.test",
+    "credentials":[{"type":"password","value":"context-development-password","temporary":false}]
+  }]
+}

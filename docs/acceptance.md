@@ -10,9 +10,9 @@ claim needs observed evidence; fixture coverage cannot establish provider behavi
 | A03 | Terminal jobs immutable; stale generation cannot publish | Domain unit tests; transactional verification pending |
 | A04 | Transitive mixed-source purge; citation-only assertions survive | Domain unit test including cyclic lineage; physical cleanup pending |
 | A05 | Real unchanged HTLK compilation/admission/execution | Verified public-API integration tests and actual sandbox metadata graph; see integration-spike.md |
-| A06 | Real initial sandbox execution and model processing | Both actual servers discovered; sandbox metadata calls verified; media and live model processing pending |
+| A06 | Real initial sandbox execution and model processing | Actual FFmpeg extraction/destruction, finite embeddings, known-phrase transcription and correct image inference verified; initial 429 and mini-model image error preserved separately |
 | A07 | Complete agreed media-format matrix | Specified; implementation/format fixtures pending |
-| A08 | All-or-nothing revision publication and durable restart recovery | Pending |
+| A08 | All-or-nothing revision publication and durable restart recovery | Pending; actual sandbox restart loses resource ownership and does not remove the saved container |
 | A09 | OIDC validation, service credentials and current resource authorization | Pending |
 | A10 | Uploads/URLs, CLI, stdio and Streamable HTTP | Pending |
 | A11 | Hybrid retrieval, budgeted maps and source navigation | Pending |

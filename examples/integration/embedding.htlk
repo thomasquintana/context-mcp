@@ -1,0 +1,12 @@
+ir_version = "0.1"
+
+graph context.embedding_probe {
+    inputs = { request = json }
+    outputs = { response = json }
+    nodes { embed = call(mcp.tool("llm", "embed")) }
+    edges {
+        edge request { from = inputs.request to = embed.inputs.arguments }
+        edge response { from = embed.outputs.value to = outputs.response }
+    }
+    limits { max_mcp_calls = 1 }
+}

@@ -93,3 +93,30 @@ fn unknown_operator_configuration_is_rejected() {
         .is_err()
     );
 }
+
+#[test]
+fn admitted_media_sized_json_survives_typed_validation_and_artifact_read() {
+    let (dir, mut config) = fixture();
+    std::fs::write(
+        dir.path().join("workflow.htlk"),
+        r#"
+ir_version = "0.1"
+graph acceptance.media_payload {
+    inputs = { request = json }
+    outputs = { response = json }
+    nodes { forward = eval(json, inputs.request) { inputs = { request = json } } }
+    edges {
+        edge input { from = inputs.request to = forward.inputs.request }
+        edge output { from = forward.outputs.value to = outputs.response }
+    }
+}
+"#,
+    )
+    .unwrap();
+    let payload = json!({"data_base64": "A".repeat(70_000)});
+    config.inputs = [("request".into(), payload.clone())].into();
+    actix::System::new().block_on(async {
+        let report = run(&config, dir.path()).await.unwrap();
+        assert_eq!(report.outputs["response"], payload);
+    });
+}

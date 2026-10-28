@@ -1,0 +1,23 @@
+ir_version = "0.1"
+
+graph context.sandbox_restart_probe {
+    inputs = { session = string }
+    outputs = { before = json, cleanup = json }
+    nodes {
+        list_arguments = eval(json, {})
+        list = call(mcp.tool("sandbox", "sandbox_list"))
+        destroy_arguments = eval(json, { id = inputs.session }) {
+            inputs = { session = string, listed = json }
+        }
+        destroy = call(mcp.tool("sandbox", "sandbox_destroy"))
+    }
+    edges {
+        edge list_request { from = list_arguments.outputs.value to = list.inputs.arguments }
+        edge listed { from = list.outputs.value to = destroy_arguments.inputs.listed }
+        edge session { from = inputs.session to = destroy_arguments.inputs.session }
+        edge destroy_request { from = destroy_arguments.outputs.value to = destroy.inputs.arguments }
+        edge before { from = list.outputs.value to = outputs.before }
+        edge cleanup { from = destroy.outputs.value to = outputs.cleanup }
+    }
+    limits { max_mcp_calls = 2 }
+}

@@ -1,0 +1,13 @@
+ir_version = "0.1"
+
+-- Lifecycle probe: intentionally ends after create to inspect provider ownership.
+graph context.sandbox_create_only {
+    inputs = { request = json }
+    outputs = { created = json }
+    nodes { create = call(mcp.tool("sandbox", "sandbox_create")) }
+    edges {
+        edge request { from = inputs.request to = create.inputs.arguments }
+        edge created { from = create.outputs.value to = outputs.created }
+    }
+    limits { max_mcp_calls = 1 }
+}

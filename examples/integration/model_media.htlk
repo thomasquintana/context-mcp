@@ -1,0 +1,21 @@
+ir_version = "0.1"
+
+-- Provider-native argument construction belongs in operator configuration/graphs.
+graph context.model_media {
+    inputs = { generation = json, embedding = json, transcription = json }
+    outputs = { generated = json, embedded = json, transcribed = json }
+    nodes {
+        generate = call(mcp.tool("llm", "generate"))
+        embed = call(mcp.tool("llm", "embed"))
+        transcribe = call(mcp.tool("llm", "transcribe"))
+    }
+    edges {
+        edge generation { from = inputs.generation to = generate.inputs.arguments }
+        edge embedding { from = inputs.embedding to = embed.inputs.arguments }
+        edge transcription { from = inputs.transcription to = transcribe.inputs.arguments }
+        edge generated { from = generate.outputs.value to = outputs.generated }
+        edge embedded { from = embed.outputs.value to = outputs.embedded }
+        edge transcribed { from = transcribe.outputs.value to = outputs.transcribed }
+    }
+    limits { max_mcp_calls = 3 }
+}

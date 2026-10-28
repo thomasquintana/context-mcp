@@ -103,7 +103,9 @@
 ### T2 — Existing-HTLK integration spike [in progress]
 
 - T2a — Existing-interface host, exact discovery and metadata invocation [completed].
-- T2b — Real media/model pipeline and lifecycle validation [blocked on environment].
+- T2b-media — Actual FFmpeg/frame/audio extraction and normal destruction [completed].
+- T2b-model — Live model calls and independent value checks [completed after account activation].
+- T2c — Actual provider restart/cleanup probe [completed investigation; gap needs direction].
 
 - Resolve dependency using unchanged public HTLK APIs and existing graph/catalog/
   deployment configuration. Record the exact compatible versions/descriptors.
@@ -208,11 +210,65 @@
   debian:bookworm-slim failed after 120s in credential helper; no media image exists.
   Ask user to provision dependencies/direction before using a workaround. The
   integration phase and entire implementation are not marked complete.
+- Resume: user supplied llm-mcp/.env and authorized execution. Source the file only
+  into the launch environment; never print/copy credential values. Model endpoints
+  inherit OPENAI_API_KEY by name and explicitly use api_key mode. Upstream host
+  checked as api.openai.com over HTTPS. No external project changed.
+- T2b-media: Docker pull now succeeds. Built deploy/media/Dockerfile from pinned
+  Debian; local image identity
+  sha256:121898f939e1cc1d784fb6c09a73159c09f84b8a1379efa1cf7516167edade89.
+  tools/live_provider_spike.py --skip-image-build --media-only passed against real
+  mcp-sandbox via compiled HTLK graph: blue 64x64 video, extracted PNG and mono
+  16kHz WAV, expected ffprobe streams, native exit0, actual container absent after
+  explicit destroy. Evidence target/providers/live-6uzuck7r/evidence.json.
+- T2b-model: actual llm-mcp generation (gpt-4.1-mini), embedding
+  (text-embedding-3-small), and transcription (whisper-1) each returned HTTP429.
+  A later isolated tiny embedding also returned429 with request ID
+  req_eb8d6e0b2fd44c45b6f6ed9c9854e770. Four rejected calls, no successful model
+  output. Error bodies deliberately unavailable; do not assert quota vs transient
+  throttling. User asked about missing usage; explained rejected requests and
+  verified actual OpenAI host and live credential inheritance (not fake discovery
+  config). Stop repeated calls until account/project access is clarified.
+- T2c actual recovery evidence: create-only HTLK run ends; container survives.
+  Fresh provider session lists []; destroy(saved ID) returns destroyed:1 but
+  container remains. tools/check_sandbox_lifecycle.py recorded evidence under
+  target/providers/live-apebe2qm/lifecycle-evidence.json. Removed only exact probe-
+  owned container during test teardown; no remaining test containers. This is NOT
+  a production cleanup workaround. Existing provider APIs cannot establish the
+  restart-safe cleanup requirement. Ask user before adding any lifetime/recovery
+  mechanism; no sibling modifications permitted.
+- Resume verification: fmt, strict all-target Clippy, workspace tests (8 passed),
+  strict rustdoc, Python compilation; real media success and actual recovery gap
+  recorded in docs/integration-spike.md. Commit these completed investigations.
+- User confirmed account activation and explicitly requested one retry. A fresh
+  admission key succeeded: text-embedding-3-small, vector256, 4 input/total tokens.
+  Evidence target/providers/embedding-approved-retry-result.json. Account blocker
+  is resolved; historical HTTP429 evidence is retained rather than overwritten.
+- Follow-on actual model graph initially exceeded our host's 100k expression-step
+  allowance validating the 65KB audio JSON before run admission (no provider call).
+  Raised only existing host-owned policy to4M steps; no HTLK mechanism/change.
+  Added public-runtime regression covering 70KB JSON through validation/artifacts.
+- Actual model graph then succeeded: embeddings returned two ordered, distinct,
+  finite vector256 values (10 input/total tokens); whisper-1 recognized synthetic
+  "The ocean is blue.". gpt-4.1-mini returned White for the known blue frame;
+  semantic test correctly failed. Isolated gpt-4.1 call correctly identified blue
+  (274 input, 2 output, 276 total tokens). No tests weakened. Fixture model default
+  now verified gpt-4.1, still operator configurable.
+- Evidence target/providers/live-tx3h_arn/model-result.json;
+  target/providers/generation-knbb8pin/{result,evidence}.json;
+  live-tx3h_arn/verified-model-evidence.json. Verification explicitly combines two
+  model runs; not a claim of full server publication/retrieval. No more model calls
+  needed for these checks unless a new change/failure justifies them.
+- Final checkpoint checks: cargo fmt --all --check; strict workspace/all-target
+  Clippy; all workspace tests (9 passed); strict rustdoc; Python syntax compilation
+  for all three harnesses. Sibling Git working trees clean; llm-mcp/.env ignored.
+  Task commit subject: Verify live media and model workflows through unchanged HTLK.
 
 ## Resume checkpoint
 
-Current task: T2b. Next: obtain configured live model-provider access and a
-functioning Docker image pull (or existing usable media
-image). Resume real sandbox/media/model validation using existing interfaces. Do
-not add adaptations or alter siblings. Preserve this plan while tasks remain;
-cleanup/final push happen only after full verification.
+Current task: T2. Local checks and real model/media investigations are complete at
+this checkpoint. Next: obtain user direction on the actual sandbox recovery gap
+before adding any lifecycle/recovery/TTL mechanism. Account
+activation resolved429; preserve the failure history. Full application pipeline and
+service tasks remain pending. Preserve this plan; cleanup/final push happen only
+after full verification.

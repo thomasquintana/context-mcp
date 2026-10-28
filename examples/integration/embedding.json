@@ -1,0 +1,22 @@
+{
+  "source": "embedding.htlk",
+  "catalogs": "../../target/providers/catalogs.json",
+  "inputs": {
+    "request": {
+      "model": "text-embedding-3-small",
+      "input": "context engine integration check",
+      "dimensions": 256
+    }
+  },
+  "endpoints": {
+    "initial-model-provider": {
+      "transport": "stdio",
+      "program": "../llm-mcp/target/debug/llm-mcp",
+      "arguments": ["serve"],
+      "environment": {"LLM_MCP_AUTH": "api_key", "LLM_MCP_TRANSPORT": "stdio"},
+      "inherit_environment": ["OPENAI_API_KEY"]
+    }
+  },
+  "database": "../../target/providers/embedding-probe.sqlite",
+  "idempotency_key": "live-single-embedding-probe"
+}

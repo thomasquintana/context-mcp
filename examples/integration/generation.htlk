@@ -1,0 +1,12 @@
+ir_version = "0.1"
+
+graph context.generation_probe {
+    inputs = { request = json }
+    outputs = { response = json }
+    nodes { generate = call(mcp.tool("llm", "generate")) }
+    edges {
+        edge request { from = inputs.request to = generate.inputs.arguments }
+        edge response { from = generate.outputs.value to = outputs.response }
+    }
+    limits { max_mcp_calls = 1 }
+}

@@ -1,0 +1,32 @@
+ir_version = "0.1"
+
+graph context.sandbox_media {
+    inputs = { create_request = json, command = string }
+    outputs = { execution = json, cleanup = json }
+    nodes {
+        create = call(mcp.tool("sandbox", "sandbox_create"))
+        exec_arguments = eval(json, {
+            id = inputs.created.id,
+            command = inputs.command,
+            timeout = 20
+        }) { inputs = { created = json, command = string } }
+        execute = call(mcp.tool("sandbox", "sandbox_exec"))
+        destroy_arguments = eval(json, { id = inputs.executed.id }) {
+            inputs = { executed = json }
+        }
+        destroy = call(mcp.tool("sandbox", "sandbox_destroy"))
+    }
+    edges {
+        edge create_request { from = inputs.create_request to = create.inputs.arguments }
+        edge created { from = create.outputs.value to = exec_arguments.inputs.created }
+        edge command { from = inputs.command to = exec_arguments.inputs.command }
+        edge exec_request { from = exec_arguments.outputs.value to = execute.inputs.arguments }
+        edge executed { from = execute.outputs.value to = destroy_arguments.inputs.executed }
+        edge destroy_request { from = destroy_arguments.outputs.value to = destroy.inputs.arguments }
+        edge execution { from = execute.outputs.value to = outputs.execution }
+        edge cleanup { from = destroy.outputs.value to = outputs.cleanup }
+    }
+    -- Check native exit status after cleanup, so a nonzero exit still reaches destroy.
+    postconditions = outputs.execution.exit_code == 0 and outputs.cleanup.destroyed == 1
+    limits { max_mcp_calls = 3 }
+}

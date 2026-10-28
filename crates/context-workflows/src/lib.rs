@@ -302,7 +302,9 @@ pub fn compiler(limits: &Limits) -> Result<(Compiler, NativeRegistry)> {
                 max_regex_bytes: 4096,
                 max_regex_compiled_bytes: 65_536,
                 max_output_bytes: 262_144,
-                max_steps: 100_000,
+                // JSON validation meters both native and JSON representations;
+                // bounded inline audio needs more than the tiny scalar-spike budget.
+                max_steps: 4_000_000,
             },
             maximum_scope_depth: 32,
             maximum_expanded_nodes: 1000,
@@ -400,8 +402,10 @@ pub async fn run(config: &RunConfig, base: &Path) -> Result<RunReport> {
         };
         if view.header.status != RunStatus::Succeeded {
             return Err(format!(
-                "integration run {} ended {:?}",
-                run.run_id, view.header.status
+                "integration run {} ended {:?}; failure={:?}",
+                run.run_id,
+                view.header.status,
+                view.failure.as_ref().map(|failure| failure.code())
             )
             .into());
         }

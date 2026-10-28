@@ -7,7 +7,7 @@ use object_store::{
     ClientOptions, ObjectStore, ObjectStoreExt, PutMode, PutOptions, RetryConfig,
     aws::{AmazonS3, AmazonS3Builder, S3ConditionalPut},
     path::Path,
-    signer::{Method, Signer},
+    signer::{HeaderName, HeaderValue, Method, SignedUrlOptions, Signer},
 };
 use sha2::{Digest, Sha256};
 use std::time::Duration;
@@ -33,6 +33,8 @@ pub struct BlobConfig {
 #[derive(Clone)]
 pub struct Blobs {
     store: AmazonS3,
+    bucket: String,
+    client: reqwest::Client,
 }
 
 fn managed_path(key: &str) -> Result<Path> {
@@ -62,6 +64,11 @@ impl Blobs {
         {
             return Err(Error::Invalid);
         }
+        let bucket = config.bucket.clone();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
         let store = AmazonS3Builder::new()
             .with_endpoint(config.endpoint)
             .with_bucket_name(config.bucket)
@@ -81,7 +88,11 @@ impl Blobs {
                 ..RetryConfig::default()
             })
             .build()?;
-        Ok(Self { store })
+        Ok(Self {
+            store,
+            bucket,
+            client,
+        })
     }
 
     /// Store a bounded small payload using create-only semantics.
@@ -135,6 +146,126 @@ impl Blobs {
     /// Returns storage/path failures; content digest still needs streaming verification.
     pub async fn size(&self, key: &str) -> Result<u64> {
         Ok(self.store.head(&managed_path(key)?).await?.size)
+    }
+
+    /// Promote an upload into a separately reserved, non-client-writable source key.
+    ///
+    /// Uses standard S3 CopyObject with a source ETag precondition, then streams the
+    /// destination through SHA-256 verification before admission. This keeps memory
+    /// bounded, creates no multipart orphans and defeats source changes/ETag collisions.
+    /// A previously verified destination makes an interrupted identical retry safe.
+    /// The caller serializes writes to the reserved destination against purge.
+    ///
+    /// # Errors
+    /// Rejects wrong size/digest, mutable-source conflicts and failed/embedded copy errors.
+    pub async fn promote_verified(
+        &self,
+        source: &str,
+        destination: &str,
+        expected_size: u64,
+        expected_sha256: &[u8; 32],
+        maximum_size: u64,
+    ) -> Result<()> {
+        if source == destination || expected_size > maximum_size {
+            return Err(Error::Invalid);
+        }
+        let source = managed_path(source)?;
+        let destination = managed_path(destination)?;
+        match self
+            .verify(&destination, expected_size, expected_sha256, maximum_size)
+            .await
+        {
+            Ok(()) => return Ok(()),
+            Err(Error::Objects(object_store::Error::NotFound { .. })) => {}
+            Err(error) => return Err(error),
+        }
+        let meta = self.store.head(&source).await?;
+        if meta.size != expected_size {
+            return Err(Error::Integrity);
+        }
+        let etag = meta.e_tag.ok_or(Error::Integrity)?;
+        let mut encoded = reqwest::Url::parse("http://s3.invalid").map_err(|_| Error::Invalid)?;
+        encoded.set_path(&format!("/{}/{}", self.bucket, source.as_ref()));
+        let options = SignedUrlOptions::new()
+            .with_signed_header(
+                HeaderName::from_static("x-amz-copy-source"),
+                HeaderValue::from_str(encoded.path()).map_err(|_| Error::Invalid)?,
+            )
+            .with_signed_header(
+                HeaderName::from_static("x-amz-copy-source-if-match"),
+                HeaderValue::from_str(&etag).map_err(|_| Error::Invalid)?,
+            );
+        let url = self
+            .store
+            .signed_url_opts(Method::PUT, &destination, Duration::from_secs(60), &options)
+            .await?;
+        let response = self
+            .client
+            .put(url)
+            .headers(options.signed_headers)
+            .send()
+            .await?
+            .error_for_status()?;
+        if response.content_length().is_some_and(|size| size > 65_536) {
+            return Err(Error::Integrity);
+        }
+        let mut response = response.bytes_stream();
+        let mut xml = Vec::new();
+        while let Some(bytes) = response.try_next().await? {
+            if xml
+                .len()
+                .checked_add(bytes.len())
+                .is_none_or(|size| size > 65_536)
+            {
+                return Err(Error::Integrity);
+            }
+            xml.extend_from_slice(&bytes);
+        }
+        #[derive(serde::Deserialize)]
+        enum CopyResult {
+            CopyObjectResult(Copied),
+        }
+        #[derive(serde::Deserialize)]
+        struct Copied {
+            #[serde(rename = "ETag")]
+            etag: String,
+        }
+        let CopyResult::CopyObjectResult(result) =
+            quick_xml::de::from_reader(xml.as_slice()).map_err(|_| Error::Integrity)?;
+        if result.etag.is_empty() {
+            return Err(Error::Integrity);
+        }
+        if let Err(error) = self
+            .verify(&destination, expected_size, expected_sha256, maximum_size)
+            .await
+        {
+            self.store.delete(&destination).await?;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    async fn verify(&self, path: &Path, size: u64, digest: &[u8; 32], limit: u64) -> Result<()> {
+        let object = self.store.get(path).await?;
+        if size > limit || object.meta.size != size {
+            return Err(Error::Integrity);
+        }
+        let mut stream = object.into_stream();
+        let mut bytes = 0_u64;
+        let mut hash = Sha256::new();
+        while let Some(part) = stream.try_next().await? {
+            bytes = bytes
+                .checked_add(part.len() as u64)
+                .ok_or(Error::Integrity)?;
+            if bytes > size || bytes > limit {
+                return Err(Error::Integrity);
+            }
+            hash.update(&part);
+        }
+        if bytes != size || hash.finalize().as_slice() != digest {
+            return Err(Error::Integrity);
+        }
+        Ok(())
     }
 
     /// Stream a source to a newly created private staging file and verify its bytes.

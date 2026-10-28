@@ -66,6 +66,14 @@ large source downloads stream into newly created private files while checking th
 exact size and SHA-256. A mismatch removes the partial file. Upload/download URLs
 are explicitly authorized by the caller and limited to at most 15 minutes.
 
+Upload promotion uses standard S3 CopyObject with a source ETag precondition into
+a separately reserved non-client-writable key. Destination bytes are streamed
+through SHA-256 verification before admission, so mutable upload keys or ETag
+collisions cannot change the accepted source. Identical interrupted promotion
+reuses a verified destination. Embedded XML copy errors and checksum mismatch fail;
+mismatched newly copied destinations are removed. This avoids buffering large
+sources or creating multipart-upload orphans.
+
 Real MinIO acceptance covered conditional writes, signed PUT/GET transfers, bounded
 reads, streaming verification, removal of mismatched staging, and idempotent purge.
 The local server was MinIO DEVELOPMENT.GOGET, image

@@ -137,6 +137,8 @@
   - T3c2 MCP/HTTP/stdio interfaces, uploads and worker recovery [in progress].
     - T3c2a Authenticated transports, operator CLI and resource services [completed].
     - T3c2b Upload admission, job state and durable processing [in progress].
+      - T3c2b0 Immutable upload promotion and frozen recovery contracts [completed].
+      - T3c2b1 Data plane, upload/finalize/status/cancel and staged workers [in progress].
 
 - Implement migrations and PostgreSQL repositories, S3/MinIO and Typesense adapters.
 - Implement configured token issuer/audience validation, stable issuer/subject
@@ -354,10 +356,27 @@
   fmt, strict Clippy, ordinary workspace tests16 and strict rustdoc passed. Actual
   PostgreSQL wrong-resource-kind/immutable-parent check passed. See
   docs/server-foundation.md. Source/env credentials remain untracked.
+- T3c2a commit5a79767. T3c2b0 added standard S3 conditional copy + destination
+  streamed SHA256 verification; actual MinIO test confirms mutable upload cannot
+  alter the immutable accepted key, identical retries are safe and bad copies
+  are removed. No multipart or full-source in-memory buffer needed.
+- Processing data contracts in context-engine::data: operator MIME/profile/space
+  roles, frozen Pipeline fingerprints, explicit json/json_text domain documents,
+  typed extraction segment manifest and enrichment. Not yet wired into upload API.
+- Recovery uses existing public HTLK inspect_node/read_artifact with explicitly
+  declared operator checkpoints. Handle stores role; grants freeze role fingerprint;
+  pure test proves accepted opaque handle survives later postcondition failure,
+  undeclared/alias reads and wrong pins are denied. No toolkit mechanism/adapter
+  or external project change. Keep sandbox lifecycle within one run because native
+  sessions are run-scoped. Interrupted cleanup uses configured role + saved handle,
+  accepts receipt per user's direction, then revokes job authority.
+- T3c2b0 checks: normal tests17, strict fmt/Clippy/rustdoc passed; real S3 promotion
+  assertions passed. Migration0003 adds upload source/profile/generation and job
+  detail metadata. Next work must implement actual admission, not placeholder jobs.
 
 ## Resume checkpoint
 
-Current task: T3c2b. Next: commit the verified transport foundation, then implement
+Current task: T3c2b1. Next: implement
 S3 upload sessions/finalization, immutable source handling, job admission/status/
 cancellation and durable staged workers. Full media roles, retrieval/memory/
 synthesis/purge follow in T4. Do not expose unimplemented tools or placeholder

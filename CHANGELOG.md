@@ -29,3 +29,6 @@
 - Add authenticated MCP HTTP/stdio server foundation, protected-resource discovery,
   explicit operator CLI, resource metadata/collection services and actual-binary
   HTLK-driven transport/isolation/idempotency verification.
+- Add immutable, streaming-verified S3 upload promotion, frozen workflow role pins,
+  declared accepted-node recovery through existing HTLK inspection, and typed
+  provider-neutral processing profile/document contracts for durable ingestion.

@@ -157,7 +157,7 @@ graph acceptance.operator {
         let config=client_config(dir.path(),"client-full",json!({"transport":"streamable_http","url":public,
             "headers":{"Authorization":format!("Bearer {}",full.secret())}}),"streamable_http");
         let host=WorkflowHost::open(&config,dir.path(),&[]).await.unwrap();
-        let grant=JobGrant {job:JobId::new(),principal,tenant:initial.tenant,assets:BTreeSet::new(),
+        let grant=JobGrant {job:JobId::new(),principal,tenant:initial.tenant,assets:BTreeSet::new(),fingerprints:Default::default(),
             roles:BTreeSet::from(["identity".into(),"resource".into(),"create".into()])};
         host.grant_job(grant.clone()).unwrap();
         let identity=succeeded(call(&host,grant.job,"identity",json!({})).await);

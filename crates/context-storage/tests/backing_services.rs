@@ -135,6 +135,41 @@ async fn s3_signed_transfers_integrity_limits_and_idempotent_purge() {
         client.get(url).send().await.unwrap().bytes().await.unwrap(),
         "uploaded fixture"
     );
+    let expected: [u8; 32] = Sha256::digest(b"uploaded fixture").into();
+    blobs
+        .promote_verified("uploads/session", "immutable/source", 16, &expected, 1024)
+        .await
+        .unwrap();
+    let upload = blobs
+        .upload_url("uploads/session", Duration::from_secs(60))
+        .await
+        .unwrap();
+    assert!(
+        client
+            .put(upload)
+            .body("changed upload!!")
+            .send()
+            .await
+            .unwrap()
+            .status()
+            .is_success()
+    );
+    assert_eq!(
+        blobs.get("immutable/source", 1024).await.unwrap(),
+        "uploaded fixture"
+    );
+    blobs
+        .promote_verified("uploads/session", "immutable/source", 16, &expected, 1024)
+        .await
+        .unwrap();
+    assert!(matches!(
+        blobs
+            .promote_verified("uploads/session", "immutable/rejected", 16, &expected, 1024)
+            .await,
+        Err(Error::Integrity)
+    ));
+    assert!(blobs.get("immutable/rejected", 1024).await.is_err());
+    blobs.delete("immutable/source").await.unwrap();
     blobs.delete("uploads/session").await.unwrap();
     blobs.delete("source/original").await.unwrap();
     blobs.delete("source/original").await.unwrap();

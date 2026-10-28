@@ -27,6 +27,23 @@ an explicit supported deployment procedure.
 
 ## Trusted job authority
 
+Application grants also freeze exact role fingerprints; startup rejects a retained
+job if its selected role revision no longer matches. Handles include the logical
+role as well as executable/run identity, preventing equal-fingerprint aliases from
+expanding checkpoint permissions.
+
+An operator role may declare recoverable root-node outputs in `checkpoints`.
+The host reads those accepted values with HTLK's existing `inspect_node` and
+`read_artifact` APIs even when a later graph step fails. This is ordinary use of
+the public inspection interface, not a new runtime mechanism or custom adapter.
+Only declared nodes and the job's granted role are readable. Trusted cleanup reads
+its saved opaque handle before revoking job authority.
+
+Keep create/execute/destroy inside one extraction graph: HTLK's native stdio
+sessions are run-scoped. An interrupted cleanup can use a separately configured
+cleanup graph with the saved handle, accepting provider success receipts per the
+agreed provider boundary. No direct provider/Docker cleanup path is introduced.
+
 A `JobGrant` comes from authenticated application records and contains the job,
 initiating principal, tenant, source asset IDs and permitted logical roles. Ordinary
 request fields do not create these facts. The runtime principal is a service-owned

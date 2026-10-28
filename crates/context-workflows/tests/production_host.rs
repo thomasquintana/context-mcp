@@ -45,6 +45,7 @@ fn identity(role: &str) -> JobGrant {
         tenant: TenantId::new(),
         assets: BTreeSet::new(),
         roles: BTreeSet::from([role.into()]),
+        fingerprints: Default::default(),
     }
 }
 
@@ -242,6 +243,83 @@ graph bad.scalar {
             actix::clock::sleep(Duration::from_millis(20)).await;
         }
         assert!(rejected, "scalar role result was not rejected");
+        host.shutdown().await.unwrap();
+    });
+}
+
+#[test]
+fn accepted_checkpoint_survives_later_failure_and_frozen_role_pins_are_enforced() {
+    let (dir, mut config) = fixture();
+    std::fs::write(
+        dir.path().join("role.htlk"),
+        r#"
+ir_version = "0.1"
+graph acceptance.checkpoint {
+    inputs = { request = json }
+    outputs = { result = json }
+    nodes {
+        saved_handle = eval(json, { handle = "opaque-test-handle" })
+        result = eval(json, {}) { inputs = { saved = json } }
+    }
+    edges {
+        edge saved { from = saved_handle.outputs.value to = result.inputs.saved }
+        edge result { from = result.outputs.value to = outputs.result }
+    }
+    postconditions = false
+}
+"#,
+    )
+    .unwrap();
+    config
+        .roles
+        .get_mut("echo")
+        .unwrap()
+        .checkpoints
+        .insert("saved_handle".into());
+    actix::System::new().block_on(async {
+        let host = WorkflowHost::open(&config, dir.path(), &[]).await.unwrap();
+        let mut bad = identity("echo");
+        bad.fingerprints
+            .insert("echo".into(), "sha256:wrong-revision".into());
+        assert!(matches!(host.grant_job(bad), Err(Error::Configuration)));
+        let mut job = identity("echo");
+        job.fingerprints
+            .insert("echo".into(), host.fingerprint("echo").unwrap());
+        host.grant_job(job.clone()).unwrap();
+        let handle = host
+            .start(job.job, "echo", &json!({}), "checkpoint")
+            .await
+            .unwrap();
+        let mut failed = false;
+        for _ in 0..250 {
+            match host.inspect(&handle).await {
+                Ok(State::Running) => {}
+                Ok(State::Failed(FailureCode::Postconditions)) => {
+                    failed = true;
+                    break;
+                }
+                Err(Error::Runtime(error)) if error.code() == FailureCode::Fenced => {}
+                _ => panic!("unexpected checkpoint workflow state"),
+            }
+            actix::clock::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(failed);
+        assert_eq!(
+            host.checkpoint(&handle, "saved_handle").await.unwrap(),
+            Some(json!({"handle":"opaque-test-handle"}))
+        );
+        assert!(matches!(
+            host.checkpoint(&handle, "result").await,
+            Err(Error::Unauthorized)
+        ));
+        let forged = Handle {
+            role: "other".into(),
+            ..handle.clone()
+        };
+        assert!(matches!(
+            host.checkpoint(&forged, "saved_handle").await,
+            Err(Error::Unauthorized)
+        ));
         host.shutdown().await.unwrap();
     });
 }

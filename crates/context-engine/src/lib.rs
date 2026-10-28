@@ -1,5 +1,7 @@
 //! Authorized context application services. Transport handlers never own domain authority.
 
+pub mod data;
+
 use context_auth::{Authenticator, OidcConfig};
 use context_core::{
     access::{Authentication, Permission, Resource},
@@ -86,6 +88,9 @@ impl Application {
                 .map_err(context_storage::Error::from)?;
             let grant: JobGrant =
                 serde_json::from_value(authority).map_err(|_| Error::Configuration)?;
+            if grant.roles.is_empty() || grant.fingerprints.len() != grant.roles.len() {
+                return Err(Error::Configuration);
+            }
             if Uuid::from(grant.job)
                 != row
                     .try_get::<Uuid, _>("job")

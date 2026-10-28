@@ -21,7 +21,7 @@ use htlk::{
         RuntimePolicy,
         execution::{ExecutionConfig, ExecutionEngine},
         failure::{FailureCode, RuntimeFailure},
-        identity::RunId,
+        identity::{InvocationId, RunId},
         mcp::{McpAdapter, McpCancellation, McpRunContext, NativeMcpAdapter},
         records::{InputValue, RunStatus, SecurityLabels},
         store::{SqliteStore, StoreConfig},
@@ -78,6 +78,9 @@ pub struct Role {
     pub source: PathBuf,
     /// Exact catalog snapshot, relative to the operator configuration directory.
     pub catalogs: PathBuf,
+    /// Explicitly allowed root-node output checkpoints for application recovery.
+    #[serde(default)]
+    pub checkpoints: BTreeSet<String>,
 }
 
 /// Finite operator-selected settings; no provider credentials are serialized.
@@ -112,6 +115,10 @@ pub struct JobGrant {
     pub assets: BTreeSet<AssetId>,
     /// Only these logical roles may be dispatched for this job.
     pub roles: BTreeSet<String>,
+    /// Exact role revisions frozen by application admission; retained across restart.
+    /// Trusted diagnostic callers may omit pins when no application job is persisted.
+    #[serde(default)]
+    pub fingerprints: BTreeMap<String, String>,
 }
 
 struct AuthorizedJob {
@@ -220,6 +227,7 @@ impl RuntimePolicy for Policy {
 struct AdmittedRole {
     fingerprint: Digest,
     document: CanonicalDocument,
+    checkpoints: BTreeSet<String>,
 }
 
 /// Durable run identity which can be saved in PostgreSQL job/stage records.
@@ -228,6 +236,8 @@ struct AdmittedRole {
 pub struct Handle {
     /// Owning authenticated application job.
     pub job: JobId,
+    /// Logical role selected by the authorized application operation.
+    pub role: String,
     /// Exact workflow revision, retained across role changes/restarts.
     pub fingerprint: String,
     /// HTLK durable run identity.
@@ -338,6 +348,15 @@ impl WorkflowHost {
                     return Err(Error::Configuration);
                 }
             }
+            for checkpoint in &role.checkpoints {
+                if !root
+                    .nodes
+                    .iter()
+                    .any(|node| node.id().as_str() == checkpoint)
+                {
+                    return Err(Error::Configuration);
+                }
+            }
             deployments.extend(
                 fields
                     .bindings
@@ -352,6 +371,7 @@ impl WorkflowHost {
                 AdmittedRole {
                     fingerprint: compiled.fingerprint,
                     document: compiled.canonical_document,
+                    checkpoints: role.checkpoints.clone(),
                 },
             );
         }
@@ -423,6 +443,77 @@ impl WorkflowHost {
             .ok_or(Error::Configuration)?
             .fingerprint
             .to_string())
+    }
+
+    /// Whether the operator declared this recoverable root-node output.
+    pub fn has_checkpoint(&self, role: &str, name: &str) -> bool {
+        self.roles
+            .get(role)
+            .is_some_and(|role| role.checkpoints.contains(name))
+    }
+
+    /// Read an already accepted operator-declared node output, even when its run failed.
+    ///
+    /// Uses existing public HTLK inspection/artifact APIs, not a new runtime
+    /// checkpoint mechanism. Recovery can obtain an opaque cleanup handle saved
+    /// before a later native call failed. Keep job authority active for trusted
+    /// cleanup, then revoke it; revoked jobs cannot read these values.
+    ///
+    /// # Errors
+    /// Denies cross-job handles and undeclared nodes; returns None before acceptance.
+    pub async fn checkpoint(
+        &self,
+        handle: &Handle,
+        name: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        if self.stopping.load(Ordering::Acquire) {
+            return Err(Error::Stopped);
+        }
+        if !self
+            .roles
+            .get(&handle.role)
+            .is_some_and(|role| role.checkpoints.contains(name))
+        {
+            return Err(Error::Unauthorized);
+        }
+        let context = self.handle_context(handle)?;
+        let run =
+            RunId::new(handle.run_id.clone(), &self.limits).map_err(|_| Error::Configuration)?;
+        let view = self.runtime.inspect_run(&context, &run).await?;
+        if view.header.fingerprint.to_string() != handle.fingerprint {
+            return Err(Error::Unauthorized);
+        }
+        let invocation = InvocationId::new(
+            view.header.root_scope,
+            &name.parse().map_err(|_| Error::Configuration)?,
+            &self.limits,
+        )
+        .map_err(|_| Error::Configuration)?;
+        let node = match self.runtime.inspect_node(&context, &run, invocation).await {
+            Ok(node) => node,
+            Err(RuntimeError::Storage(htlk::runtime::store::StoreError::Missing)) => {
+                return Ok(None);
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let Some(Value::Map(outputs)) = node.outputs else {
+            return Ok(None);
+        };
+        let Some(Value::Map(entry)) = outputs.get("value") else {
+            return Ok(None);
+        };
+        let Some(Value::Text(id)) = entry.get("artifact_id") else {
+            return Ok(None);
+        };
+        let artifact = self
+            .runtime
+            .read_artifact(&context, id.parse().map_err(|_| Error::Configuration)?)
+            .await?;
+        let value = JsonDocument::from_value(&artifact.value, &self.limits)
+            .map_err(|_| Error::Configuration)?;
+        Ok(Some(
+            serde_json::from_slice(value.as_bytes()).map_err(|_| Error::Configuration)?,
+        ))
     }
 
     /// Check exact live descriptors for trusted selected roles before job admission.
@@ -500,6 +591,7 @@ impl WorkflowHost {
                 return Err(Error::Unauthorized);
             }
         }
+        let role_name = role.to_string();
         let role = self.roles.get(role).ok_or(Error::Configuration)?;
         let document = JsonDocument::new(
             &serde_json::to_vec(request).map_err(|_| Error::Configuration)?,
@@ -523,6 +615,7 @@ impl WorkflowHost {
             .await?;
         Ok(Handle {
             job,
+            role: role_name,
             fingerprint: role.fingerprint.to_string(),
             run_id: started.run_id.to_string(),
         })
@@ -537,7 +630,7 @@ impl WorkflowHost {
         if self.stopping.load(Ordering::Acquire) {
             return Err(Error::Stopped);
         }
-        let context = job_context(handle.job, &self.limits)?;
+        let context = self.handle_context(handle)?;
         let run =
             RunId::new(handle.run_id.clone(), &self.limits).map_err(|_| Error::Configuration)?;
         let view = self.runtime.inspect_run(&context, &run).await?;
@@ -584,7 +677,7 @@ impl WorkflowHost {
         if self.stopping.load(Ordering::Acquire) {
             return Err(Error::Stopped);
         }
-        let context = job_context(handle.job, &self.limits)?;
+        let context = self.handle_context(handle)?;
         let run =
             RunId::new(handle.run_id.clone(), &self.limits).map_err(|_| Error::Configuration)?;
         let view = self.runtime.inspect_run(&context, &run).await?;
@@ -617,6 +710,18 @@ impl WorkflowHost {
             .map_err(|e| Error::Initialization(Box::new(e)))?;
         Ok(())
     }
+
+    fn handle_context(&self, handle: &Handle) -> Result<HostContext> {
+        let role = self.roles.get(&handle.role).ok_or(Error::Unauthorized)?;
+        let jobs = self.policy.jobs.read().map_err(|_| Error::Unauthorized)?;
+        let grant = jobs.get(&handle.job).ok_or(Error::Unauthorized)?;
+        if !grant.identity.roles.contains(&handle.role)
+            || role.fingerprint.to_string() != handle.fingerprint
+        {
+            return Err(Error::Unauthorized);
+        }
+        Ok(job_context(handle.job, &self.limits)?)
+    }
 }
 
 fn grant(
@@ -628,10 +733,19 @@ fn grant(
     if identity.roles.is_empty() {
         return Err(Error::Unauthorized);
     }
+    if !identity.fingerprints.is_empty() && identity.fingerprints.len() != identity.roles.len() {
+        return Err(Error::Configuration);
+    }
     let mut graphs = BTreeSet::new();
     let mut bindings = BTreeSet::new();
     for role in &identity.roles {
-        let role = roles.get(role).ok_or(Error::Configuration)?;
+        let selected = roles.get(role).ok_or(Error::Configuration)?;
+        if !identity.fingerprints.is_empty()
+            && identity.fingerprints.get(role) != Some(&selected.fingerprint.to_string())
+        {
+            return Err(Error::Configuration);
+        }
+        let role = selected;
         graphs.insert(role.fingerprint);
         for binding in role.document.fields().bindings.values() {
             bindings.insert(binding.digest(limits).map_err(|_| Error::Configuration)?);

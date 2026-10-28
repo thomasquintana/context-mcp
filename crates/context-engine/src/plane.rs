@@ -28,6 +28,7 @@ pub(crate) struct Plane {
     pub blobs: Blobs,
     pub search: BTreeMap<String, Search>,
     pub staging: PathBuf,
+    pub publications: Mutex<()>,
     pub tokenizer: tiktoken_rs::CoreBPE,
     pub controls: Mutex<BTreeMap<JobId, Arc<Control>>>,
     pub stop: CancellationToken,
@@ -90,6 +91,7 @@ impl Plane {
         let staging = staging.canonicalize().map_err(|_| Error::Configuration)?;
         let (calls, receiver) = tokio::sync::mpsc::channel(config.workers * 4);
         let plane = Self {
+            publications: Mutex::new(()),
             tokenizer: match config.token_encoding.as_str() {
                 "cl100k_base" => tiktoken_rs::cl100k_base(),
                 "o200k_base" => tiktoken_rs::o200k_base(),
@@ -110,6 +112,26 @@ impl Plane {
         };
         for profile in plane.config.profiles.keys() {
             plane.pipeline(host, Some(profile), None)?;
+        }
+        for role in plane
+            .config
+            .reconcile_role
+            .iter()
+            .chain(plane.config.synthesis_role.iter())
+        {
+            host.fingerprint(role)?;
+        }
+        if plane.config.memory_authority.len() > 1024
+            || plane.config.memory_types.len() > 128
+            || plane.config.memory_types.iter().any(|(name, kind)| {
+                name.len() > 128
+                    || !matches!(
+                        kind.as_str(),
+                        "string" | "number" | "integer" | "boolean" | "object" | "array" | "null"
+                    )
+            })
+        {
+            return Err(Error::Configuration);
         }
         Ok(plane)
     }

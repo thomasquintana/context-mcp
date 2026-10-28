@@ -3,10 +3,12 @@
 pub mod data;
 pub mod jobs;
 pub mod media;
+pub mod memories;
 mod operations;
 mod plane;
 pub mod retrieval;
 pub mod sharing;
+pub mod synthesis;
 pub mod uploads;
 pub mod urls;
 mod worker;

@@ -200,6 +200,7 @@ impl Application {
         }
         let media =
             crate::uploads::media_type(result["media_type"].as_str().ok_or(Error::Contract)?)?;
+        let _publication = plane.publications.lock().await;
         let _lock = plane.tenant_lock(job.tenant).await;
         self.live(job).await?;
         self.clear_staged(plane, job).await?;
@@ -232,10 +233,12 @@ impl Application {
         plane.blobs.put(&key, bytes.into(), 2 * 1024 * 1024).await?;
         sqlx::query("UPDATE context.jobs SET stage='rendered',detail=detail||$2::jsonb WHERE id=$1 AND state='running'").bind(Uuid::from(job.id)).bind(json!({"result":{"content":id}})).execute(self.database.pool()).await.map_err(context_storage::Error::from)?;
         drop(_lock);
+        drop(_publication);
         self.publish_media(plane, job).await
     }
 
     pub(crate) async fn publish_media(&self, plane: &Plane, job: &Job) -> Result<()> {
+        let _publication = plane.publications.lock().await;
         let _lock = plane.tenant_lock(job.tenant).await;
         self.live(job).await?;
         match tokio::fs::remove_dir_all(plane.directory(job.id)).await {

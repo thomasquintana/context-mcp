@@ -158,8 +158,8 @@
 - T4a Full-format operator roles, exact-URL ingestion and combined live-provider
   application verification [completed].
 - T4b Retrieval/context budgets/navigation [completed].
-- T4c Revisioned memory/reconciliation and cited synthesis [in progress].
-- T4d Transitive physical purge and index rebuild/recovery [pending].
+- T4c Revisioned memory/reconciliation and cited synthesis [completed].
+- T4d Transitive physical purge and index rebuild/recovery [in progress].
 - Implement complete agreed-format workflows through replaceable graph bindings.
 - Implement chunking/enrichment/indexing, hybrid retrieval, context budgets,
   navigation/entities and page/region/clip extraction.
@@ -440,9 +440,19 @@ image707838fe...);9 nonpaid backing-service application tests,21 normal tests,
 strict fmt/Clippy/rustdoc pass. Actual binary HTTP/stdio context tests pass; one existing
 HTLK loop retains the stdio session across ingest/poll/query instead of assuming
 run-independent native sessions. No external/toolkit changes or custom adapter.
-Current task: T4c. Implement immutable semantic memory, model-assisted reconciliation,
-explicit authority/supersession/conflict semantics and cited transient/saved synthesis.
-Then physical transitive purge in T4d, delivery
+T4c complete: immutable typed/text memories, natural subjects, current/conflicted
+views, expected-version writes, equivalent/complementary merges, explicit supersession,
+operator principal precedence and model classification without model-invented authority.
+Cited synthesis rejects invented IDs, stays transient by default and saves only
+explicitly with all-input source dependencies. Cross-owner publication mutex fences
+physical derivative write windows. Twelve nonpaid application tests,21 normal tests,
+strict fmt/Clippy/rustdoc pass; source revocation hides dependent memory/summaries while
+independent citation-only assertions survive with unavailable support. Pure model
+fixtures are not live reasoning evidence; final combined model checks remain T5.
+Current task: T4d. Implement durable permanent-purge worklists, immediate read/admission
+closure, transitive mixed-source/history deletion across owners, source-derived jobs/
+requests fencing/settlement, write-capability expiry, physical S3/index/staging cleanup,
+content-free audit, orphan cleanup and authorized index rebuilding. Then delivery
 gates in T5, final plan cleanup and push in T6. Continue through every remaining task.
 Do not expose unimplemented tools or placeholder successes. Preserve exact source
 dependencies, generation fences and the recorded cleanup/receipt-retention boundaries.

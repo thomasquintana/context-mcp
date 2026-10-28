@@ -53,6 +53,16 @@ pub struct Profile {
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Optional model classification role; it cannot select authority or supersession.
+    pub reconcile_role: Option<String>,
+    /// Optional cited synthesis role.
+    pub synthesis_role: Option<String>,
+    /// Operator principal precedence; only strict precedence resolves contradictions.
+    #[serde(default)]
+    pub memory_authority: BTreeMap<context_core::ids::PrincipalId, i32>,
+    /// Optional semantic type names mapped to JSON primitive/container type names.
+    #[serde(default)]
+    pub memory_types: BTreeMap<String, String>,
     /// Tokenizer for evidence budgets: cl100k_base or o200k_base.
     #[serde(default = "default_token_encoding")]
     pub token_encoding: String,

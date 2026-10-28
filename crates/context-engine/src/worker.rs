@@ -448,6 +448,7 @@ impl Application {
             if count == 0 {
                 return Err(Error::Contract);
             }
+            let _publication = plane.publications.lock().await;
             let _lock = plane.tenant_lock(job.tenant).await;
             return self.publish_indexed(plane, &job, count as usize).await;
         }
@@ -687,6 +688,7 @@ impl Application {
             let tokens = plane.tokenizer.encode_ordinary(&text).len();
             bodies.push((id,json!({"text":text,"sources":[source],"origin":origin,"embedding":embedding,"tokens":tokens}),embedding,origin));
         }
+        let _publication = plane.publications.lock().await;
         let _lock = plane.tenant_lock(job.tenant).await;
         self.live(&job).await?;
         // Remove only this job's unpublished derivatives from an interrupted attempt.
@@ -1024,6 +1026,7 @@ impl Application {
                 }
             }
         }
+        let _publication = plane.publications.lock().await;
         let _lock = plane.tenant_lock(job.tenant).await;
         self.clear_staged(plane, &job).await?;
         match tokio::fs::remove_dir_all(plane.directory(id)).await {

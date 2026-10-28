@@ -23,6 +23,8 @@
     "workflows":{
       "database":"../../data/runtime.sqlite",
       "roles":{
+        "reconcile":{"source":"reconcile.htlk","catalogs":"../../target/providers/catalogs.json"},
+        "synthesize":{"source":"synthesize.htlk","catalogs":"../../target/providers/catalogs.json"},
         "extract":{"source":"extract.htlk","catalogs":"../../target/providers/catalogs.json","checkpoints":["create"]},
         "cleanup":{"source":"cleanup.htlk","catalogs":"../../target/providers/catalogs.json"},
         "enrich":{"source":"enrich.htlk","catalogs":"../../target/providers/catalogs.json"},
@@ -45,6 +47,7 @@
       }
     },
     "data":{
+      "reconcile_role":"reconcile","synthesis_role":"synthesize","token_encoding":"cl100k_base",
       "s3_endpoint":"http://127.0.0.1:59000","s3_bucket":"context","s3_region":"us-east-1",
       "s3_access_key_env":"CONTEXT_S3_ACCESS_KEY","s3_secret_key_env":"CONTEXT_S3_SECRET_KEY","s3_allow_http":true,
       "typesense_endpoint":"http://127.0.0.1:58108","typesense_key_env":"CONTEXT_TYPESENSE_KEY",

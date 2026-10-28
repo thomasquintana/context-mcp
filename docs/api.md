@@ -12,6 +12,9 @@ Implemented tools: `context_identity`, `context_resource`,
 `context_extract_media`, `context_asset_history`, `context_reprocess`, and
 `context_set_access`. Their exact descriptors are exported by `context-mcp catalog`.
 See context-services.md for retrieval/budget/history/navigation and sharing contracts.
+Semantic memory and cited generation tools are `context_write_memory`,
+`context_reconcile_memory`, `context_read_memory` and `context_synthesize`; see
+memory-and-synthesis.md for version/conflict/authority and transient/save boundaries.
 See ingestion.md for implemented job/role contracts and server-foundation.md for
 setup. The remaining capabilities below await their application milestones.
 

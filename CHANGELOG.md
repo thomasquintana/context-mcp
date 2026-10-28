@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add immutable semantic memory with natural subjects, typed values, explicit
+  provenance, optimistic versions, equivalent/complementary reconciliation and
+  preserved conflicts. Keep author precedence/supersession host-authorized.
+- Add validated cited synthesis, transient by default, and explicit saved generated
+  artifacts with all-input dependencies and current source protections. Verify
+  concurrent updates, authority, revocation and transient/save behavior against real
+  backing services with clearly labeled pure model fixtures.
+
 - Add permission-aware hybrid context maps with real BPE budgets, transitive source
   protection, generated entity navigation, immutable history/reprocessing and live
   cross-tenant ACL replacement/revocation. Add durable exact page/region/clip jobs,

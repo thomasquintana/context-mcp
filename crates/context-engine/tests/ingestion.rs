@@ -153,6 +153,10 @@ impl Fixture {
             ("embed", r#"{ embedding = [1,0,0], space = "test" }"#),
             ("cleanup", r#"{ done = true }"#),
             ("bad_cleanup", r#"{ done = false }"#),
+            (
+                "reconcile",
+                r#"{ document = {encoding = "json",value = {relation = "complementary",rationale = "Explicit pure fixture classification"}} }"#,
+            ),
         ] {
             std::fs::write(
                 dir.path().join(format!("{role}.htlk")),
@@ -191,6 +195,20 @@ graph fixture.render {{
     edges {{ edge result {{from = result.outputs.value to = outputs.result}} }}
 }}
 "#)).unwrap();
+        for (role, citation) in [
+            ("synthesize", "inputs.request.evidence[0]"),
+            ("bad_synthesize", "\"00000000-0000-0000-0000-000000000000\""),
+        ] {
+            std::fs::write(dir.path().join(format!("{role}.htlk")),format!(r#"
+ir_version = "0.1"
+graph fixture.{role} {{
+    inputs = {{request = json}}
+    outputs = {{result = json}}
+    nodes {{result = eval(json, {{document = {{encoding = "json",value = {{text = "The ocean is blue.",citations = [{citation}]}}}}}}) {{inputs = {{request = json}}}} }}
+    edges {{edge request {{from = inputs.request to = result.inputs.request}} edge result {{from = result.outputs.value to = outputs.result}}}}
+}}
+"#)).unwrap();
+        }
         let mut roles = serde_json::Map::new();
         for role in [
             "extract",
@@ -200,6 +218,9 @@ graph fixture.render {{
             "cleanup",
             "bad_cleanup",
             "render",
+            "reconcile",
+            "synthesize",
+            "bad_synthesize",
         ] {
             roles.insert(
                 role.into(),
@@ -216,7 +237,7 @@ graph fixture.render {{
         let index = format!("ingestion_{}", Uuid::now_v7().simple());
         let config:Config=serde_json::from_value(json!({"database_url_env":"CONTEXT_TEST_DATABASE_URL","database_connections":8,"oidc":null,
             "workflows":{"database":"runtime.sqlite","roles":roles,"endpoints":{},"required_deployments":[],"workers":2,"max_runs":16},
-            "data":{"s3_endpoint":endpoint,"s3_bucket":bucket,"s3_region":"us-east-1","s3_access_key_env":"CONTEXT_TEST_S3_ACCESS_KEY",
+            "data":{"reconcile_role":"reconcile","synthesis_role":"synthesize","s3_endpoint":endpoint,"s3_bucket":bucket,"s3_region":"us-east-1","s3_access_key_env":"CONTEXT_TEST_S3_ACCESS_KEY",
                 "s3_secret_key_env":"CONTEXT_TEST_S3_SECRET_KEY","s3_allow_http":true,"typesense_endpoint":typesense,"typesense_key_env":"CONTEXT_TEST_TYPESENSE_KEY",
                 "spaces":{"test":{"collection":index,"dimensions":3,"document_role":"embed","query_role":"embed"}},"default_space":"test",
                 "profiles":{"default":profile,"broken":broken,"unclean":unclean},"default_profile":"default","staging_directory":"staging",
@@ -948,6 +969,369 @@ fn explicit_reprocess_preserves_history_and_live_cross_tenant_sharing() {
             .execute(fixture.db.pool())
             .await
             .unwrap();
+        fixture.close().await;
+    });
+}
+
+fn assertion(
+    workspace: context_core::ids::WorkspaceId,
+    subject: &str,
+    value: context_core::memory::MemoryValue,
+    version: i64,
+    key: &str,
+) -> context_engine::memories::WriteMemory {
+    context_engine::memories::WriteMemory {
+        workspace,
+        memory: None,
+        subject: subject.into(),
+        description: "Agent assertion".into(),
+        value,
+        expected_version: version,
+        derived_from: Vec::new(),
+        citations: Vec::new(),
+        derived_content: BTreeSet::new(),
+        supersedes: BTreeSet::new(),
+        idempotency_key: key.into(),
+    }
+}
+
+#[test]
+#[ignore = "requires isolated PostgreSQL, MinIO and Typesense; pure reconciliation/model roles"]
+fn memory_history_equivalence_complement_conflicts_and_concurrent_versions_are_preserved() {
+    actix::System::new().block_on(async {
+        use context_core::memory::MemoryValue;
+        let fixture = Fixture::open().await;
+        fixture.app.start_workers().await.unwrap();
+        let numeric = |n| MemoryValue::Typed {
+            value_type: "number".into(),
+            value: json!(n),
+        };
+        let first = fixture
+            .app
+            .write_memory(
+                &fixture.actor,
+                assertion(
+                    fixture.workspace,
+                    "Office temperature",
+                    numeric(20),
+                    0,
+                    "memory-1",
+                ),
+            )
+            .await
+            .unwrap();
+        let memory = first["memory"].as_str().unwrap().parse().unwrap();
+        let second = fixture
+            .app
+            .write_memory(
+                &fixture.actor,
+                assertion(
+                    fixture.workspace,
+                    "Office temperature",
+                    numeric(21),
+                    1,
+                    "memory-2",
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(second["view"]["state"], "conflicted");
+        assert_eq!(second["basis"], "unresolved_conflict");
+        let mut resolve = assertion(
+            fixture.workspace,
+            "Office temperature",
+            numeric(22),
+            2,
+            "memory-3",
+        );
+        resolve.supersedes = second["view"]["revisions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| id.as_str().unwrap().parse().unwrap())
+            .collect();
+        let resolved = fixture
+            .app
+            .write_memory(&fixture.actor, resolve)
+            .await
+            .unwrap();
+        assert_eq!(resolved["view"]["state"], "current");
+        assert_eq!(resolved["basis"], "explicit_supersession");
+        let history = fixture
+            .app
+            .read_memory(&fixture.actor, memory, true, None, 20)
+            .await
+            .unwrap();
+        assert_eq!(history["revisions"].as_array().unwrap().len(), 3);
+        let (left, right) = tokio::join!(
+            fixture.app.write_memory(
+                &fixture.actor,
+                assertion(
+                    fixture.workspace,
+                    "Office temperature",
+                    numeric(23),
+                    3,
+                    "race-left"
+                )
+            ),
+            fixture.app.write_memory(
+                &fixture.actor,
+                assertion(
+                    fixture.workspace,
+                    "Office temperature",
+                    numeric(24),
+                    3,
+                    "race-right"
+                )
+            ),
+        );
+        assert_ne!(
+            left.is_ok(),
+            right.is_ok(),
+            "two stale-version writes both published"
+        );
+        let text = |statement: &str| MemoryValue::Text {
+            statement: statement.into(),
+        };
+        fixture
+            .app
+            .write_memory(
+                &fixture.actor,
+                assertion(
+                    fixture.workspace,
+                    "Ocean facts",
+                    text("The ocean is blue."),
+                    0,
+                    "ocean-1",
+                ),
+            )
+            .await
+            .unwrap();
+        let equivalent = fixture
+            .app
+            .write_memory(
+                &fixture.actor,
+                assertion(
+                    fixture.workspace,
+                    "Ocean facts",
+                    text("The ocean is blue."),
+                    1,
+                    "ocean-2",
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(equivalent["basis"], "equivalent");
+        let complement = fixture
+            .app
+            .write_memory(
+                &fixture.actor,
+                assertion(
+                    fixture.workspace,
+                    "Ocean facts",
+                    text("The ocean is deep."),
+                    2,
+                    "ocean-3",
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(complement["basis"], "complementary");
+        let current = fixture
+            .app
+            .memory_subject(&fixture.actor, fixture.workspace, " ocean   FACTS ")
+            .await
+            .unwrap();
+        let statement = current["revisions"][0]["value"]["statement"]
+            .as_str()
+            .unwrap();
+        assert!(statement.contains("blue") && statement.contains("deep"));
+        assert_eq!(current["revisions"][0]["origin"], "generated");
+        fixture.close().await;
+    });
+}
+
+#[test]
+#[ignore = "requires isolated PostgreSQL, MinIO and Typesense; pure model roles, actual authority/grants"]
+fn configured_authority_is_host_owned_and_synthesis_is_cited_and_transient_until_saved() {
+    actix::System::new().block_on(async {
+        use context_core::{access::{Resource,Recipient,Grant},memory::MemoryValue};
+        let mut fixture=Fixture::open().await;fixture.app.shutdown().await.unwrap();fixture.config.data.as_mut().unwrap().memory_authority.insert(fixture.principal,10);
+        fixture.app=Arc::new(Application::open(&fixture.config,fixture._dir.path()).await.unwrap());fixture.app.start_workers().await.unwrap();
+        let guest=fixture.db.identity("memory-guest",&Uuid::now_v7().to_string(),"service").await.unwrap();let auth=Authenticator::open(fixture.db.clone(),None).await.unwrap();let token=auth.issue_service(guest,&BTreeSet::from([Permission::Read,Permission::WriteMemory]),Duration::from_secs(600)).await.unwrap();let actor=auth.authenticate(token.secret()).await.unwrap();
+        fixture.app.set_access(&fixture.actor,context_engine::sharing::SetAccess {resource:Resource::Workspace(fixture.workspace),expected_acl_version:1,inherit:true,grants:vec![Grant{recipient:Recipient::Principal(guest),permissions:BTreeSet::from([Permission::Read,Permission::WriteMemory])}],idempotency_key:"guest-memory".into()}).await.unwrap();
+        let first=fixture.app.write_memory(&fixture.actor,assertion(fixture.workspace,"Approved policy",MemoryValue::Typed{value_type:"boolean".into(),value:json!(true)},0,"policy-owner")).await.unwrap();
+        let second=fixture.app.write_memory(&actor,assertion(fixture.workspace,"Approved policy",MemoryValue::Typed{value_type:"boolean".into(),value:json!(false)},1,"policy-guest")).await.unwrap();assert_eq!(second["basis"],"authority_rule");assert_eq!(second["view"]["revision"],first["revision"]);
+        let evidence=first["content"].as_str().unwrap().parse().unwrap();
+        let request=|save|context_engine::synthesis::Synthesize{workspace:fixture.workspace,question:"What is supported?".into(),evidence:BTreeSet::from([evidence]),token_budget:None,save,name:None,idempotency_key:if save{Some("save-answer".into())}else{None}};
+        let transient=fixture.app.synthesize(&fixture.actor,request(false)).await.unwrap();assert_eq!(transient["saved"],false);assert_eq!(transient["citations"][0],first["content"]);
+        let count:i64=sqlx::query_scalar("SELECT count(*) FROM context.content WHERE workspace=$1 AND kind='summary'").bind(Uuid::from(fixture.workspace)).fetch_one(fixture.db.pool()).await.unwrap();assert_eq!(count,0);
+        let saved=fixture.app.synthesize(&fixture.actor,request(true)).await.unwrap();assert_eq!(saved["saved"],true);assert_eq!(fixture.app.synthesize(&fixture.actor,request(true)).await.unwrap()["content"],saved["content"]);
+        let dependency:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.dependencies WHERE source=$1 AND dependent=$2 AND relationship='derivation')").bind(Uuid::parse_str(first["content"].as_str().unwrap()).unwrap()).bind(Uuid::parse_str(saved["content"].as_str().unwrap()).unwrap()).fetch_one(fixture.db.pool()).await.unwrap();assert!(dependency);
+        fixture.app.shutdown().await.unwrap();fixture.config.data.as_mut().unwrap().synthesis_role=Some("bad_synthesize".into());fixture.app=Arc::new(Application::open(&fixture.config,fixture._dir.path()).await.unwrap());fixture.app.start_workers().await.unwrap();
+        assert!(matches!(fixture.app.synthesize(&fixture.actor,context_engine::synthesis::Synthesize{workspace:fixture.workspace,question:"Invented citation".into(),evidence:BTreeSet::from([evidence]),token_budget:None,save:false,name:None,idempotency_key:None}).await,Err(context_engine::Error::Contract)));
+        fixture.close().await;
+    });
+}
+
+#[test]
+#[ignore = "requires isolated PostgreSQL, MinIO and Typesense; source-protected knowledge with pure model roles"]
+fn source_revocation_hides_derivatives_but_preserves_independent_citation_only_assertions() {
+    actix::System::new().block_on(async {
+        use context_core::{
+            access::Resource,
+            content::{SourceLocation, SourceReference},
+            memory::MemoryValue,
+        };
+        let fixture = Fixture::open().await;
+        fixture.app.start_workers().await.unwrap();
+        let source = fixture
+            .app
+            .ingest_text(
+                &fixture.actor,
+                fixture.collection,
+                "support.txt",
+                "fixture content",
+                None,
+                "support",
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            fixture
+                .wait(source["job"].as_str().unwrap().parse().unwrap())
+                .await["state"],
+            "succeeded"
+        );
+        let asset = source["asset"].as_str().unwrap().parse().unwrap();
+        let reference = SourceReference {
+            asset,
+            revision: source["revision"].as_str().unwrap().parse().unwrap(),
+            location: SourceLocation::Asset,
+            available: true,
+        };
+        let mut derived = assertion(
+            fixture.workspace,
+            "Derived fact",
+            MemoryValue::Text {
+                statement: "Source-derived statement".into(),
+            },
+            0,
+            "derived",
+        );
+        derived.derived_from = vec![reference.clone()];
+        let derived = fixture
+            .app
+            .write_memory(&fixture.actor, derived)
+            .await
+            .unwrap();
+        let mut independent = assertion(
+            fixture.workspace,
+            "Independent fact",
+            MemoryValue::Text {
+                statement: "Independently authored statement".into(),
+            },
+            0,
+            "independent",
+        );
+        independent.citations = vec![reference];
+        let independent = fixture
+            .app
+            .write_memory(&fixture.actor, independent)
+            .await
+            .unwrap();
+        let summary = fixture
+            .app
+            .synthesize(
+                &fixture.actor,
+                context_engine::synthesis::Synthesize {
+                    workspace: fixture.workspace,
+                    question: "What follows?".into(),
+                    evidence: BTreeSet::from([derived["content"]
+                        .as_str()
+                        .unwrap()
+                        .parse()
+                        .unwrap()]),
+                    token_budget: None,
+                    save: true,
+                    name: None,
+                    idempotency_key: Some("protected-summary".into()),
+                },
+            )
+            .await
+            .unwrap();
+        fixture
+            .app
+            .set_access(
+                &fixture.actor,
+                context_engine::sharing::SetAccess {
+                    resource: Resource::Asset(asset),
+                    expected_acl_version: 1,
+                    inherit: false,
+                    grants: Vec::new(),
+                    idempotency_key: "remove-source-read".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(
+            fixture
+                .app
+                .read_memory(
+                    &fixture.actor,
+                    derived["memory"].as_str().unwrap().parse().unwrap(),
+                    false,
+                    None,
+                    20
+                )
+                .await
+                .is_err()
+        );
+        assert!(
+            fixture
+                .app
+                .expand(
+                    &fixture.actor,
+                    context_core::context::Pointer::Content {
+                        content: summary["content"].as_str().unwrap().parse().unwrap()
+                    }
+                )
+                .await
+                .is_err()
+        );
+        let retained = fixture
+            .app
+            .read_memory(
+                &fixture.actor,
+                independent["memory"].as_str().unwrap().parse().unwrap(),
+                false,
+                None,
+                20,
+            )
+            .await
+            .unwrap();
+        assert_eq!(retained["revisions"][0]["citations"][0]["available"], false);
+        assert_eq!(retained["revisions"][0]["origin"], "agent_assertion");
+        let map = fixture
+            .app
+            .query(
+                &fixture.actor,
+                context_engine::retrieval::Query {
+                    scope: Resource::Workspace(fixture.workspace),
+                    query: "statement".into(),
+                    limit: 20,
+                    token_budget: None,
+                    historical: false,
+                    space: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(map.evidence.len(), 1);
+        assert_eq!(
+            map.evidence[0].id.to_string(),
+            independent["content"].as_str().unwrap()
+        );
         fixture.close().await;
     });
 }

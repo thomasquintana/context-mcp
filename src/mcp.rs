@@ -127,6 +127,18 @@ struct ReprocessArguments {
     profile: Option<String>,
     idempotency_key: String,
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MemoryReadArguments {
+    memory: Option<context_core::ids::MemoryId>,
+    workspace: Option<WorkspaceId>,
+    subject: Option<String>,
+    #[serde(default)]
+    history: bool,
+    before: Option<i64>,
+    limit: Option<usize>,
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct JobControlArguments {
@@ -276,6 +288,52 @@ impl ServerHandler for McpServer {
                     .map_err(|_| ErrorData::invalid_params("invalid access arguments", None))?;
                 self.application.set_access(&actor, args).await
             }
+            "context_write_memory" | "context_reconcile_memory" => {
+                let args: context_engine::memories::WriteMemory = serde_json::from_value(arguments)
+                    .map_err(|_| {
+                        ErrorData::invalid_params("invalid semantic memory arguments", None)
+                    })?;
+                self.application.write_memory(&actor, args).await
+            }
+            "context_read_memory" => {
+                let args: MemoryReadArguments =
+                    serde_json::from_value(arguments).map_err(|_| {
+                        ErrorData::invalid_params("invalid memory view arguments", None)
+                    })?;
+                match (args.memory, args.workspace, args.subject) {
+                    (Some(memory), None, None) => {
+                        self.application
+                            .read_memory(
+                                &actor,
+                                memory,
+                                args.history,
+                                args.before,
+                                args.limit.unwrap_or(20),
+                            )
+                            .await
+                    }
+                    (None, Some(workspace), Some(subject))
+                        if !args.history && args.before.is_none() =>
+                    {
+                        self.application
+                            .memory_subject(&actor, workspace, &subject)
+                            .await
+                    }
+                    _ => {
+                        return Err(ErrorData::invalid_params(
+                            "select a memory ID or workspace/subject",
+                            None,
+                        ));
+                    }
+                }
+            }
+            "context_synthesize" => {
+                let args: context_engine::synthesis::Synthesize = serde_json::from_value(arguments)
+                    .map_err(|_| {
+                        ErrorData::invalid_params("invalid cited synthesis arguments", None)
+                    })?;
+                self.application.synthesize(&actor, args).await
+            }
             "context_cancel_job" | "context_retry_job" => {
                 let args: JobControlArguments =
                     serde_json::from_value(arguments).map_err(|_| {
@@ -334,7 +392,33 @@ pub fn server_info() -> ServerConfig {
 /// Exact descriptors for currently implemented application operations.
 pub fn tools() -> Vec<Tool> {
     let id = json!({"type":"string","format":"uuid"});
+    let source = json!({"type":"object","required":["asset","revision","location","available"],"properties":{"asset":id,"revision":id,"location":{"type":"object"},"available":{"type":"boolean"}},"additionalProperties":false});
+    let memory = json!({"type":"object","required":["workspace","subject","description","value","expected_version","idempotency_key"],"properties":{"workspace":id,"memory":id,"subject":{"type":"string","minLength":1,"maxLength":512},"description":{"type":"string","maxLength":8192},"value":{"type":"object","required":["kind"],"properties":{"kind":{"enum":["text","typed"]},"statement":{"type":"string","maxLength":32768},"value_type":{"type":"string","maxLength":128},"value":{}},"additionalProperties":false},"expected_version":{"type":"integer","minimum":0},"derived_from":{"type":"array","maxItems":64,"items":source},"citations":{"type":"array","maxItems":64,"items":source},"derived_content":{"type":"array","maxItems":64,"items":id},"supersedes":{"type":"array","maxItems":64,"items":id},"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false});
     let descriptors = [
+        (
+            "context_write_memory",
+            "Write a subject/description/typed value or statement as an immutable semantic memory revision. Expected version zero creates; conflicts remain explicit unless authorized supersession or configured authority resolves them.",
+            memory.clone(),
+            false,
+        ),
+        (
+            "context_reconcile_memory",
+            "Reconcile a proposed assertion against the known current memory view. Models classify equivalence/complementarity/contradiction; they cannot invent authority or supersession.",
+            memory,
+            false,
+        ),
+        (
+            "context_read_memory",
+            "Read a currently protected memory/conflict view or explicit bounded history. Select a memory ID, or a workspace and natural-language subject.",
+            json!({"type":"object","properties":{"memory":id,"workspace":id,"subject":{"type":"string","maxLength":512},"history":{"type":"boolean"},"before":{"type":"integer","minimum":1},"limit":{"type":"integer","minimum":1,"maximum":20}},"additionalProperties":false}),
+            true,
+        ),
+        (
+            "context_synthesize",
+            "Explicitly generate a cited answer from accessible evidence. Transient by default; save=true requires a stable key and retains all informational dependencies and generated origin.",
+            json!({"type":"object","required":["workspace","question"],"properties":{"workspace":id,"question":{"type":"string","minLength":1,"maxLength":4096},"evidence":{"type":"array","maxItems":64,"items":id},"token_budget":{"type":"integer","minimum":1,"maximum":16384},"save":{"type":"boolean"},"name":{"type":"string","maxLength":256},"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false}),
+            false,
+        ),
         (
             "context_identity",
             "Return the authenticated principal and credential scope ceiling; tenant claims never create resource grants.",

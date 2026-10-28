@@ -1,0 +1,23 @@
+[package]
+name = "context-process"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Bounded offline source extraction helper executed by operator sandbox workflows"
+
+[dependencies]
+serde_json.workspace = true
+sha2.workspace = true
+quick-xml.workspace = true
+zip = { version = "=9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+tar = "=0.4.46"
+flate2 = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

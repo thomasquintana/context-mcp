@@ -1,0 +1,27 @@
+ir_version = "0.1"
+graph operator.extract {
+    inputs = { request = json }
+    outputs = { result = json }
+    nodes {
+        create_arguments = eval(json, { profile = "context", cwd = inputs.request.directory, session_id = inputs.request.job }) { inputs = { request = json } }
+        create = call(mcp.tool("sandbox", "sandbox_create"))
+        command = eval(json, { id = inputs.created.id, command = "context-process", timeout = 120 }) { inputs = { created = json } }
+        execute = call(mcp.tool("sandbox", "sandbox_exec"))
+        destroy_arguments = eval(json, { id = inputs.executed.id }) { inputs = { executed = json } }
+        destroy = call(mcp.tool("sandbox", "sandbox_destroy"))
+        result = eval(json, { document = { encoding = "json_text", value = inputs.executed.stdout }, native_exit = inputs.executed.exit_code, destroyed = inputs.cleaned.destroyed }) { inputs = { executed = json, cleaned = json } }
+    }
+    edges {
+        edge request { from = inputs.request to = create_arguments.inputs.request }
+        edge create_arguments { from = create_arguments.outputs.value to = create.inputs.arguments }
+        edge created { from = create.outputs.value to = command.inputs.created }
+        edge command { from = command.outputs.value to = execute.inputs.arguments }
+        edge executed { from = execute.outputs.value to = destroy_arguments.inputs.executed }
+        edge destroy_arguments { from = destroy_arguments.outputs.value to = destroy.inputs.arguments }
+        edge executed_result { from = execute.outputs.value to = result.inputs.executed }
+        edge cleaned { from = destroy.outputs.value to = result.inputs.cleaned }
+        edge result { from = result.outputs.value to = outputs.result }
+    }
+    postconditions = outputs.result.native_exit == 0 and outputs.result.destroyed == 1
+    limits { max_mcp_calls = 3 }
+}

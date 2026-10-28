@@ -23,6 +23,11 @@
     "workflows":{
       "database":"../../data/runtime.sqlite",
       "roles":{
+        "extract":{"source":"extract.htlk","catalogs":"../../target/providers/catalogs.json","checkpoints":["create"]},
+        "cleanup":{"source":"cleanup.htlk","catalogs":"../../target/providers/catalogs.json"},
+        "enrich":{"source":"enrich.htlk","catalogs":"../../target/providers/catalogs.json"},
+        "describe":{"source":"describe.htlk","catalogs":"../../target/providers/catalogs.json"},
+        "transcribe":{"source":"transcribe.htlk","catalogs":"../../target/providers/catalogs.json"},
         "embed":{"source":"embed.htlk","catalogs":"../../target/providers/catalogs.json"},
         "sandbox.metadata":{"source":"sandbox-metadata.htlk","catalogs":"../../target/providers/catalogs.json"}
       },
@@ -35,9 +40,23 @@
         },
         "initial-sandbox-provider":{
           "transport":"stdio","program":"target/providers/mcp-sandbox","arguments":[],"environment":{},
-          "inherit_environment":["ALLOW_DIRS","SANDBOX_PROFILES_DIR"]
+          "inherit_environment":["ALLOW_DIRS","SANDBOX_PROFILES_DIR","DOCKER_HOST"]
         }
       }
+    },
+    "data":{
+      "s3_endpoint":"http://127.0.0.1:59000","s3_bucket":"context","s3_region":"us-east-1",
+      "s3_access_key_env":"CONTEXT_S3_ACCESS_KEY","s3_secret_key_env":"CONTEXT_S3_SECRET_KEY","s3_allow_http":true,
+      "typesense_endpoint":"http://127.0.0.1:58108","typesense_key_env":"CONTEXT_TYPESENSE_KEY",
+      "spaces":{"text-embedding-3-small:256:v1":{"collection":"context_v1","dimensions":256,"document_role":"embed","query_role":"embed"}},
+      "default_space":"text-embedding-3-small:256:v1","default_profile":"multimodal",
+      "profiles":{"multimodal":{
+        "media_types":["text/*","application/javascript","application/typescript","application/x-python","application/x-sh","application/xml","application/sql","application/json","application/pdf","application/epub+zip","application/zip","application/x-tar","application/gzip","application/x-gzip",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","image/*","audio/*","video/*"],
+        "extract_role":"extract","cleanup_role":"cleanup","cleanup_node":"create","describe_role":"describe","transcribe_role":"transcribe","enrich_role":"enrich",
+        "space":"text-embedding-3-small:256:v1","chunk_bytes":4096}},
+      "staging_directory":"../../data/staging","max_upload_bytes":1073741824,"upload_lifetime_seconds":900,"max_pending_jobs":1024,"workers":2,"max_segments":1000
     }
   }
 }

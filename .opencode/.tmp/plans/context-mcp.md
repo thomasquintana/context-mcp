@@ -153,11 +153,11 @@
 - Verify actual database/storage interactions and tenant boundary cases.
 - Update plan and commit independently verified sub-tasks as appropriate.
 
-### T4 — Multimodal processing and context services [pending]
+### T4 — Multimodal processing and context services [in progress]
 
 - T4a Full-format operator roles, exact-URL ingestion and combined live-provider
-  application verification [pending; next task].
-- T4b Retrieval/context budgets/navigation [pending].
+  application verification [completed].
+- T4b Retrieval/context budgets/navigation [in progress].
 - T4c Revisioned memory/reconciliation and cited synthesis [pending].
 - T4d Transitive physical purge and index rebuild/recovery [pending].
 - Implement complete agreed-format workflows through replaceable graph bindings.
@@ -423,11 +423,19 @@
 
 ## Resume checkpoint
 
-Current task boundary: T3c2b1 complete and verified; commit intended milestone changes.
-Next task: T4a. Implement real operator extraction/enrichment/embed/cleanup roles for
-the agreed format matrix, exact-resource URL admission and combined actual-provider
-application evidence. Existing development.json has only foundation provider roles,
-not a production ingestion profile. Retrieval/memory/synthesis/purge follow in T4b-d.
+T3c2b1 committed as9c80500. User explicitly requests uninterrupted completion of
+all remaining tasks followed by pushing everything to origin; do not stop at milestones.
+T4a complete: Rust offline helper, sandbox/native/model roles, full development
+profile and exact-URL ingestion with tracked streaming/egress/receipt recovery.
+28 actual sandbox format cases passed all assertions (latest wrapper timed out after
+writing completed evidence); actual production-host video/model ingestion passed
+blue/ocean/vector256/index assertions with real backing services. Six nonpaid
+ingestion tests,21 normal tests, strict fmt/Clippy/rustdoc pass. See docs/processing.md
+for exact image/evidence boundaries and the opt-in paid test. No sibling changes.
+Current task: T4b. Implement permission-aware hybrid retrieval, bounded context maps,
+exact/history expansion, entity navigation and derived page/region/clip operations.
+Then memory/reconciliation/synthesis and physical transitive purge in T4c-d, delivery
+gates in T5, final plan cleanup and push in T6. Continue through every remaining task.
 Do not expose unimplemented tools or placeholder successes. Preserve exact source
 dependencies, generation fences and the recorded cleanup/receipt-retention boundaries.
 Use the shared production host (not spike fixed policy) and authenticate every

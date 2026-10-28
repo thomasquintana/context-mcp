@@ -4,6 +4,7 @@ pub mod data;
 pub mod jobs;
 mod plane;
 pub mod uploads;
+pub mod urls;
 mod worker;
 
 use context_auth::{Authenticator, OidcConfig};
@@ -154,12 +155,14 @@ impl Application {
             Some(data) => Some(Arc::new(plane::Plane::open(data, base, &workflows).await?)),
             None => None,
         };
-        Ok(Self {
+        let application = Self {
             database,
             authentication,
             workflows,
             plane,
-        })
+        };
+        application.clear_acquisitions(true).await?;
+        Ok(application)
     }
 
     /// Authentication boundary, used independently on every transport operation.

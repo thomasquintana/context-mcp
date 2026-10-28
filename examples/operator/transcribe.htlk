@@ -1,0 +1,17 @@
+ir_version = "0.1"
+graph operator.transcribe {
+    inputs = { request = json }
+    outputs = { result = json }
+    nodes {
+        arguments = eval(json, { model = "whisper-1", file = { filename = "audio.wav", mime_type = inputs.request.media_type, data_base64 = inputs.request.data_base64 }, response_format = "json" }) { inputs = { request = json } }
+        transcribe = call(mcp.tool("llm", "transcribe"))
+        result = eval(json, { text = inputs.response.text }) { inputs = { response = json } }
+    }
+    edges {
+        edge request { from = inputs.request to = arguments.inputs.request }
+        edge arguments { from = arguments.outputs.value to = transcribe.inputs.arguments }
+        edge response { from = transcribe.outputs.value to = result.inputs.response }
+        edge result { from = result.outputs.value to = outputs.result }
+    }
+    limits { max_mcp_calls = 1 }
+}

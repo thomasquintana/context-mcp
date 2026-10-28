@@ -6,9 +6,9 @@ operation runs through the shared HTLK host. Operator graphs define extraction,
 description/transcription, enrichment, embeddings and cleanup.
 
 The service pipeline is verified against actual PostgreSQL, MinIO and Typesense with
-pure processing fixtures. Full-format production role definitions and combined live
-model/media ingestion verification remain the next processing milestone. Independent
-live provider evidence is in [integration-spike.md](integration-spike.md).
+pure processing fixtures and with a real video/model pipeline. Reference full-format
+operator roles and measured matrix/provider evidence are in [processing.md](processing.md).
+Earlier independent provider evidence is in [integration-spike.md](integration-spike.md).
 
 ## Public operations
 
@@ -175,7 +175,7 @@ export CONTEXT_TEST_S3_ACCESS_KEY=context-test
 export CONTEXT_TEST_S3_SECRET_KEY=context-test-secret
 export CONTEXT_TEST_TYPESENSE_ENDPOINT=http://127.0.0.1:58108
 export CONTEXT_TEST_TYPESENSE_KEY=context-test-only-key
-cargo test -p context-engine --test ingestion --locked -- --ignored --test-threads=1
+cargo test -p context-engine --test ingestion --locked -- --ignored --skip actual_video --test-threads=1
 cargo test -p context-mcp --test transports --locked -- --ignored
 ```
 

@@ -32,6 +32,11 @@ pub enum Relationship {
 pub enum SourceLocation {
     /// The whole asset.
     Asset,
+    /// Exact logical member of an explicitly uploaded document/repository archive.
+    File {
+        /// Relative archive member path; never a host filesystem path.
+        path: String,
+    },
     /// Inclusive one-based document page range.
     Pages {
         /// First page.
@@ -69,7 +74,14 @@ pub enum SourceLocation {
 impl SourceLocation {
     /// Check ordering and coordinate overflow before use with a media processor.
     pub fn is_valid(&self) -> bool {
-        match *self {
+        match self {
+            Self::File { path } => {
+                !path.is_empty()
+                    && path.len() <= 1024
+                    && !path.starts_with('/')
+                    && !path.contains('\\')
+                    && path.split('/').all(|part| !matches!(part, "" | "." | ".."))
+            }
             Self::Asset => true,
             Self::Pages { first, last } => first <= last,
             Self::Time { start_ms, end_ms } => start_ms < end_ms,

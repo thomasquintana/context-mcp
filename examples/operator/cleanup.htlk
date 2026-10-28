@@ -1,0 +1,17 @@
+ir_version = "0.1"
+graph operator.cleanup {
+    inputs = { request = json }
+    outputs = { result = json }
+    nodes {
+        arguments = eval(json, { id = inputs.request.checkpoint.id }) { inputs = { request = json } }
+        destroy = call(mcp.tool("sandbox", "sandbox_destroy"))
+        result = eval(json, { done = inputs.cleaned.destroyed == 1 }) { inputs = { cleaned = json } }
+    }
+    edges {
+        edge request { from = inputs.request to = arguments.inputs.request }
+        edge arguments { from = arguments.outputs.value to = destroy.inputs.arguments }
+        edge cleaned { from = destroy.outputs.value to = result.inputs.cleaned }
+        edge result { from = result.outputs.value to = outputs.result }
+    }
+    limits { max_mcp_calls = 1 }
+}

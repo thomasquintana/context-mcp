@@ -546,8 +546,21 @@ impl Application {
                             job.pipeline.profile.transcribe_role.as_deref()
                         }
                         .ok_or(Error::MissingCapability)?;
-                        let value=self.stage(plane,&job,Stage::new(format!("decode:{}",chunks.len()),role,
-                            json!({"data_base64":STANDARD.encode(bytes),"media_type":segment.media_type,"location":location})),cancel).await?;
+                        let encoded = STANDARD.encode(bytes);
+                        let media = segment.media_type.as_deref().ok_or(Error::Contract)?;
+                        let request = if segment.kind == SegmentKind::Image {
+                            json!({"data_url":format!("data:{media};base64,{encoded}"),"media_type":media,"location":location})
+                        } else {
+                            json!({"data_base64":encoded,"media_type":media,"location":location})
+                        };
+                        let value = self
+                            .stage(
+                                plane,
+                                &job,
+                                Stage::new(format!("decode:{}", chunks.len()), role, request),
+                                cancel,
+                            )
+                            .await?;
                         value["text"].as_str().ok_or(Error::Contract)?.into()
                     }
                 };
@@ -962,6 +975,7 @@ impl Application {
     }
 
     async fn maintenance(&self, plane: &Plane) -> Result<()> {
+        self.clear_acquisitions(false).await?;
         let expired=sqlx::query("SELECT u.id,u.asset,r.owner FROM context.uploads u JOIN context.resources r ON r.id=u.asset WHERE u.expires_at<now() AND NOT r.purging ORDER BY u.expires_at LIMIT 16")
             .fetch_all(self.database.pool()).await.map_err(context_storage::Error::from)?;
         for row in expired {

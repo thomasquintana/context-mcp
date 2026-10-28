@@ -109,7 +109,7 @@ def main():
     ).stdout.strip()
     if not args.skip_image_build:
         execute(["docker", "build", "--tag", args.media_image,
-                 "--file", "deploy/media/Dockerfile", "deploy/media"])
+                  "--file", "deploy/media/Dockerfile", "."])
     image_id = execute(
         ["docker", "image", "inspect", "--format", "{{.Id}}", args.media_image],
         capture=True,

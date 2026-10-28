@@ -1,0 +1,6 @@
+.git
+.opencode
+target/
+data/
+**/.env
+**/agent-token

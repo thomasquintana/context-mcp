@@ -82,7 +82,13 @@ impl Fixture {
         let _ = tracing_subscriber::fmt()
             .with_env_filter("context_engine=warn")
             .try_init();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = match std::env::var("CONTEXT_TEST_WORKDIR") {
+            Ok(path) => tempfile::Builder::new()
+                .prefix("application-")
+                .tempdir_in(path)
+                .unwrap(),
+            Err(_) => tempfile::tempdir().unwrap(),
+        };
         let db = Database::connect(
             &std::env::var("CONTEXT_TEST_DATABASE_URL").expect("isolated PG"),
             8,
@@ -533,6 +539,91 @@ fn missing_handles_outside_receipt_retention_are_not_replayed_or_marked_clean() 
         let absent:bool=sqlx::query_scalar("SELECT run_id IS NULL FROM context.workflow_stages WHERE job=$1 AND stage='extract:0'")
             .bind(Uuid::from(job)).fetch_one(fixture.db.pool()).await.unwrap();
         assert!(absent,"application replayed an intent beyond its safe receipt window");
+        fixture.close().await;
+    });
+}
+
+#[test]
+#[ignore = "requires isolated PostgreSQL, MinIO and Typesense; exact HTTP source and pure roles"]
+fn exact_url_acquisition_is_bounded_allowlisted_and_recovers_child_receipts() {
+    actix::System::new().block_on(async {
+        use tokio::io::{AsyncReadExt,AsyncWriteExt};
+        let mut fixture=Fixture::open().await;
+        fixture.app.shutdown().await.unwrap();
+        fixture.config.data.as_mut().unwrap().url_hosts.insert("127.0.0.1".into());
+        fixture.config.data.as_mut().unwrap().url_allow_http=true;
+        fixture.app=Arc::new(Application::open(&fixture.config,fixture._dir.path()).await.unwrap());
+        fixture.app.start_workers().await.unwrap();
+        let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let address=listener.local_addr().unwrap();
+        let hits=Arc::new(std::sync::atomic::AtomicUsize::new(0));let count=hits.clone();
+        let server=tokio::spawn(async move {
+            loop {let (mut stream,_)=listener.accept().await.unwrap();let mut request=[0;4096];let size=stream.read(&mut request).await.unwrap();
+                count.fetch_add(1,std::sync::atomic::Ordering::SeqCst);
+                let redirect=std::str::from_utf8(&request[..size]).unwrap().contains("GET /redirect ");
+                let response=if redirect {"HTTP/1.1 302 Found\r\nLocation: http://invalid.example/never\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"}
+                    else{"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 15\r\nConnection: close\r\n\r\nfixture content"};
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let args=context_engine::urls::IngestUrl {collection:fixture.collection,asset:None,name:"url.txt".into(),url:format!("http://{address}/exact"),media_type:"text/plain".into(),profile:None,idempotency_key:"url-1".into()};
+        let admitted=fixture.app.ingest_url(&fixture.actor,args.clone()).await.unwrap();
+        let job:JobId=admitted["job"].as_str().unwrap().parse().unwrap();assert_eq!(fixture.wait(job).await["state"],"succeeded");
+        assert_eq!(fixture.app.ingest_url(&fixture.actor,args.clone()).await.unwrap(),admitted);
+        sqlx::query("DELETE FROM context.receipts WHERE principal=$1 AND operation='ingest_url' AND idempotency_key='url-1'")
+            .bind(Uuid::from(fixture.principal)).execute(fixture.db.pool()).await.unwrap();
+        sqlx::query("DELETE FROM context.uploads WHERE job=$1").bind(Uuid::from(job)).execute(fixture.db.pool()).await.unwrap();
+        assert_eq!(fixture.app.ingest_url(&fixture.actor,args.clone()).await.unwrap(),admitted);
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst),1,"receipt replay fetched mutable URL again");
+        let mut denied=args.clone();denied.url=format!("http://localhost:{}/exact",address.port());denied.idempotency_key="denied".into();
+        assert!(fixture.app.ingest_url(&fixture.actor,denied).await.is_err());
+        let mut redirect=args;redirect.url=format!("http://{address}/redirect");redirect.idempotency_key="redirect".into();
+        assert!(fixture.app.ingest_url(&fixture.actor,redirect).await.is_err());
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst),2,"redirect followed to an unrequested resource");
+        server.abort();fixture.close().await;
+    });
+}
+
+#[test]
+#[ignore = "requires actual model/sandbox binaries, processing image/profile, model credential and backing services; paid calls"]
+fn actual_video_model_workflows_publish_independently_checked_evidence() {
+    actix::System::new().block_on(async {
+        let mut fixture=Fixture::open().await;fixture.app.shutdown().await.unwrap();
+        let root=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+        for role in ["extract","cleanup","enrich","embed","describe","transcribe"] {
+            fixture.config.workflows.roles.insert(role.into(),context_workflows::host::Role {
+                source:root.join(format!("examples/operator/{role}.htlk")),catalogs:root.join("target/providers/catalogs.json"),
+                checkpoints:if role=="extract"{BTreeSet::from(["create".into()])}else{BTreeSet::new()},
+            });
+        }
+        fixture.config.workflows.endpoints=serde_json::from_value(json!({
+            "initial-model-provider":{"transport":"stdio","program":root.join("../llm-mcp/target/debug/llm-mcp"),"arguments":["serve"],"environment":{"LLM_MCP_AUTH":"api_key","LLM_MCP_TRANSPORT":"stdio"},"inherit_environment":["OPENAI_API_KEY"]},
+            "initial-sandbox-provider":{"transport":"stdio","program":root.join("target/providers/mcp-sandbox"),"arguments":[],"environment":{},"inherit_environment":["ALLOW_DIRS","SANDBOX_PROFILES_DIR","DOCKER_HOST"]}
+        })).unwrap();
+        fixture.config.workflows.required_deployments=BTreeSet::from(["initial-model-provider".into(),"initial-sandbox-provider".into()]);
+        let data=fixture.config.data.as_mut().unwrap();let mut space=data.spaces.remove("test").unwrap();space.dimensions=256;
+        let name="text-embedding-3-small:256:v1";data.spaces.insert(name.into(),space);data.default_space=name.into();
+        for profile in data.profiles.values_mut(){profile.space=name.into();}
+        let profile=data.profiles.get_mut("default").unwrap();profile.cleanup_node=Some("create".into());profile.describe_role=Some("describe".into());profile.transcribe_role=Some("transcribe".into());profile.media_types.insert("video/mp4".into());
+        assert!(fixture.http.delete(format!("{}/collections/{}",fixture.typesense,fixture.index)).header("X-TYPESENSE-API-KEY",&fixture.index_key).send().await.unwrap().status().is_success());
+        fixture.app=Arc::new(Application::open(&fixture.config,fixture._dir.path()).await.unwrap());fixture.app.start_workers().await.unwrap();
+        let bytes=std::fs::read(std::env::var("CONTEXT_TEST_VIDEO_FIXTURE").expect("synthetic blue video with known speech")).unwrap();
+        let hash=Sha256::digest(&bytes).iter().map(|b|format!("{b:02x}")).collect::<String>();
+        let transfer=fixture.app.create_upload(&fixture.actor,context_engine::uploads::CreateUpload {collection:fixture.collection,asset:None,name:"blue-with-speech.mp4".into(),media_type:"video/mp4".into(),size_bytes:bytes.len() as u64,sha256:hash,profile:None,idempotency_key:"real-video".into()}).await.unwrap();
+        let mut put=fixture.http.put(transfer["url"].as_str().unwrap()).body(bytes);for(k,v)in transfer["headers"].as_object().unwrap(){put=put.header(k,v.as_str().unwrap());}assert!(put.send().await.unwrap().status().is_success());
+        let admitted=fixture.app.finalize_upload(&fixture.actor,transfer["upload"].as_str().unwrap().parse().unwrap(),"real-video-final").await.unwrap();
+        let job:JobId=admitted["job"].as_str().unwrap().parse().unwrap();let mut success=false;
+        for _ in 0..1200 {
+            let status=fixture.app.job_status(&fixture.actor,job).await.unwrap();
+            match status["state"].as_str(){Some("succeeded")=>{success=true;break;},Some("failed"|"cancelled")=>panic!("actual processing failed: {status}"),_=>{}}
+            actix::clock::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(success,"actual processing exceeded deadline");
+        let rows:Vec<Value>=sqlx::query_scalar("SELECT body FROM context.content WHERE producer_job=$1 AND published AND kind='chunk'").bind(Uuid::from(job)).fetch_all(fixture.db.pool()).await.unwrap();
+        assert!(rows.len()>=2);let text=rows.iter().map(|v|v["text"].as_str().unwrap()).collect::<Vec<_>>().join(" ").to_lowercase();
+        assert!(text.contains("blue") &&text.contains("ocean"),"model evidence disagrees with independent blue-video/known-speech fixture");
+        for row in &rows {let vector=row["embedding"].as_array().unwrap();assert_eq!(vector.len(),256);assert!(vector.iter().all(|v|v.as_f64().unwrap().is_finite()));}
+        let indexed:Value=fixture.http.get(format!("{}/collections/{}",fixture.typesense,fixture.index)).header("X-TYPESENSE-API-KEY",&fixture.index_key).send().await.unwrap().json().await.unwrap();
+        assert_eq!(indexed["num_documents"].as_u64(),Some(rows.len() as u64));
         fixture.close().await;
     });
 }

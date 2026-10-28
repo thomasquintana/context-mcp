@@ -51,6 +51,12 @@ pub struct Profile {
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Explicit operator allowlist for exact-resource URL acquisition (empty disables it).
+    #[serde(default)]
+    pub url_hosts: BTreeSet<String>,
+    /// Permit HTTP acquisition from explicitly allowed local/test hosts.
+    #[serde(default)]
+    pub url_allow_http: bool,
     /// S3-compatible endpoint.
     pub s3_endpoint: String,
     /// Operator-provisioned bucket.

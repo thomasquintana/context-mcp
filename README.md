@@ -6,15 +6,15 @@ versioned semantic memory, and cited synthesis. Apache-2.0.
 **Implementation status:** domain contracts, backing-service clients, authenticated
 MCP HTTP/stdio services, upload/text/job processing and shared HTLK hosting are
 implemented and tested. The durable ingestion service is verified against actual
-backing services with pure role fixtures; full-format processing roles and knowledge
-services remain under development.
+backing services, reference format extraction and actual model/video processing.
+Knowledge services remain under development.
 The integration host has verified unchanged HTLK discovery against both initial
 providers and compiled read-only invocation against the actual sandbox server.
 Native FFmpeg processing, normal sandbox cleanup, and actual OpenAI generation,
 embedding and transcription through HTLK are verified. Sandbox restart recovery
 has a measured provider bug which the user accepts; cleanup uses existing destroy
 calls and provider success receipts.
-Combined live-provider application processing remains pending. See the
+See [processing profiles and measured application evidence](docs/processing.md) and the
 [integration evidence](docs/integration-spike.md).
 See [the specification](docs/specification.md) and
 [acceptance criteria](docs/acceptance.md) for the target behavior and verification.

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add offline Rust document/archive processing, sandboxed PDF/media extraction,
+  replaceable model role graphs, streamed allowlisted exact-URL acquisition and
+  tracked acquisition cleanup. Verify 28 actual sandbox format cases and a real
+  video/model pipeline through application publication/indexing.
+
 - Record the agreed architecture, API/workflow contracts, and acceptance criteria.
 - Add provider-neutral domain types for resource access, immutable source and memory
   revisions, context maps, job transitions, publication fences, and transitive purge.

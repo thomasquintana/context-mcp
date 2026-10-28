@@ -1,8 +1,11 @@
-//! Operator-controlled integration validation using unchanged public HTLK APIs.
+//! Production hosting and operator-controlled validation through public HTLK APIs.
 //!
-//! This is an integration-spike host, not the production authentication or job
-//! service. Configuration is trusted operator input and can launch local programs.
+//! [`host`] provides the shared runtime and trusted job authorization boundary.
+//! The free-standing discovery/run helpers are integration-spike diagnostics, not
+//! production authentication. Configuration is trusted and can launch local programs.
 //! MCP discovery and execution both use HTLK's existing `NativeMcpAdapter`.
+
+pub mod host;
 
 use htlk::{
     compiler::{

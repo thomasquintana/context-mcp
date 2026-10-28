@@ -131,8 +131,10 @@
 - T3a — PostgreSQL schema/repositories and S3/Typesense clients [completed].
   - T3a1 PostgreSQL schema and transactional primitives [completed].
   - T3a2 S3/Typesense clients and live verification [completed].
-- T3b — Shared production HTLK host and role contracts [in progress].
-- T3c — Authentication, authorization, transport and durable jobs [pending].
+- T3b — Shared production HTLK host and role contracts [completed].
+- T3c — Authentication, authorization, transport and durable jobs [in progress].
+  - T3c1 Provider-neutral authentication and transactional ACL decisions [in progress].
+  - T3c2 MCP/HTTP/stdio interfaces, uploads and worker recovery [pending].
 
 - Implement migrations and PostgreSQL repositories, S3/MinIO and Typesense adapters.
 - Implement configured token issuer/audience validation, stable issuer/subject
@@ -302,12 +304,25 @@
   Typesense29.1 context-mcp-test-typesense on58108 uses tmpfs/data and pinned image.
   Disposable test credentials are public fixtures, not user secrets. Tests create
   random S3 buckets and Typesense collections and delete them after verification.
+- T3a2 commit:37ab660. Strict fmt/Clippy/docs and unit suite passed; all seven actual
+  storage tests (5PG+2MinIO/Typesense) passed in one explicit backing-service run.
+- T3b: context-workflows::host added one long-lived registry/store/runtime/engine,
+  retained operator role graphs with required request/json -> result/json object
+  contract, exact selected-binding readiness checks, required deployment validation,
+  authenticated JobGrant provenance labels, graph/binding-scoped authorization,
+  revocation, saved run handles, typed state/accepted outputs and bounded shutdown.
+  Uses existing public HTLK policies/interfaces; no adapter or sibling changes.
+- T3b verification: five normal production-host tests cover cross-job/forged-handle
+  denial, ungranted role aliases, revocation, durable reopen/idempotency, invalid
+  ports/providers, scalar result rejection. Actual sandbox metadata/readiness also
+  passed under the production policy. Total normal workspace tests14 passed;
+  fmt, strict all-target Clippy and strict rustdoc passed. See docs/workflow-host.md.
 
 ## Resume checkpoint
 
-Current task: T3b. Next: commit verified backing clients, then implement one shared
-production HTLK host, exact role input/output contracts and live descriptor checks
-using existing public APIs. T3c must authorize memberships/grants/protected reads
-within a consistent transaction; primitive hydration calls alone are not sufficient.
+Current task: T3c1. Next: commit the verified production workflow host, then implement
+provider-neutral authentication, hashed service credentials and shared-transaction
+membership/grant/protected-read authorization. Primitive hydration calls alone are
+not sufficient. Continue to server transports and durable workers afterward.
 Provider orphan limitation is accepted; no adaptation needed. Preserve this plan;
 cleanup/final push happen only after full verification.

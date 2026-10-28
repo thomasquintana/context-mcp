@@ -423,10 +423,12 @@ name = "context-workflows"
 version = "0.1.0"
 dependencies = [
  "actix",
+ "context-core",
  "htlk",
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

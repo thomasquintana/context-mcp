@@ -20,3 +20,6 @@
 - Add bounded S3-compatible storage with conditional writes, verified streaming
   downloads, expiring transfer URLs and idempotent deletion; add authorized-ID
   Typesense hybrid-search/index clients. Verify against actual MinIO and Typesense.
+- Add a shared long-lived HTLK role host with trusted job grants/provenance labels,
+  exact role and provider readiness checks, revocation, protected output reads,
+  durable reopening and orderly shutdown through unchanged public interfaces.

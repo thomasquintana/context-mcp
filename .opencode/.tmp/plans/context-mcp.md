@@ -200,6 +200,7 @@
 - T2a checks: fmt, strict workspace/all-target Clippy, all workspace tests (8 passed,
   including public-runtime replay/admission and typed-input rejection), strict
   rustdoc. Added docs/integration-spike.md with exact reproduction and scope.
+  Commit: `91a7582` (Validate existing HTLK interfaces against initial MCP providers).
 - T2b environment blockers: no OPENAI_API_KEY configured. llm-mcp auth status reports
   ChatGPT sign-in, but OAuth mode lacks embedding/transcription. Do not access or
   copy credential values. Need an existing configured model endpoint or provider
@@ -210,8 +211,8 @@
 
 ## Resume checkpoint
 
-Current task: T2b. Next: commit completed T2a work, then ask for configured live
-model-provider access and a functioning Docker image pull (or existing usable media
+Current task: T2b. Next: obtain configured live model-provider access and a
+functioning Docker image pull (or existing usable media
 image). Resume real sandbox/media/model validation using existing interfaces. Do
 not add adaptations or alter siblings. Preserve this plan while tasks remain;
 cleanup/final push happen only after full verification.

@@ -4,7 +4,9 @@
 //! authorize the caller before mutations; database constraints independently fence
 //! ancestry, revision publication and idempotent state changes.
 
+pub mod blobs;
 pub mod postgres;
+pub mod search;
 
 use std::{error::Error as StdError, fmt};
 
@@ -29,6 +31,18 @@ pub enum Error {
     /// Serialization of an authoritative domain record failed.
     #[error("invalid stored record")]
     Serialization(#[from] serde_json::Error),
+    /// Object-store operation failed; ordinary formatting excludes signed URLs.
+    #[error("object storage operation failed")]
+    Objects(#[from] object_store::Error),
+    /// Backing-service HTTP operation failed.
+    #[error("backing service request failed")]
+    Http(#[from] reqwest::Error),
+    /// A bounded streaming/file operation failed.
+    #[error("managed file operation failed")]
+    Io(#[from] std::io::Error),
+    /// An object or response exceeded its declared bound or checksum.
+    #[error("managed content integrity or size mismatch")]
+    Integrity,
 }
 
 impl fmt::Debug for Error {

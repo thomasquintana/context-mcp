@@ -128,10 +128,10 @@
 
 ### T3 — Service foundation and authoritative persistence [in progress]
 
-- T3a — PostgreSQL schema/repositories and S3/Typesense clients [in progress].
+- T3a — PostgreSQL schema/repositories and S3/Typesense clients [completed].
   - T3a1 PostgreSQL schema and transactional primitives [completed].
-  - T3a2 S3/Typesense clients and live verification [in progress].
-- T3b — Shared production HTLK host and role contracts [pending].
+  - T3a2 S3/Typesense clients and live verification [completed].
+- T3b — Shared production HTLK host and role contracts [in progress].
 - T3c — Authentication, authorization, transport and durable jobs [pending].
 
 - Implement migrations and PostgreSQL repositories, S3/MinIO and Typesense adapters.
@@ -291,11 +291,23 @@
   fmt, strict workspace all-target Clippy, normal workspace tests (9 passed plus
   5 explicitly ignored backing-service tests), strict rustdoc all passed. No
   sibling changes. Storage primitives do not claim completed request auth/service.
+- T3a1 commit: d3592aa. T3a2 implemented S3-compatible bounded reads, create-only
+  writes, streaming size/SHA256 verification, short-lived signed URLs and repeated
+  deletes; Typesense schema/dimension validation, deterministic upsert, finite
+  vectors, authorized-ID hybrid queries and repeated deletion. Actual MinIO and
+  Typesense tests passed. Metadata/credentials stay out of ordinary errors.
+- T3a2 test infrastructure: local context-mcp-test-minio on59000 uses cached MinIO
+  DEVELOPMENT.GOGET image d84beaf... (full provenance in docs/persistence.md).
+  Public MinIO registry tags were unavailable; no endpoint/schema adaptation added.
+  Typesense29.1 context-mcp-test-typesense on58108 uses tmpfs/data and pinned image.
+  Disposable test credentials are public fixtures, not user secrets. Tests create
+  random S3 buckets and Typesense collections and delete them after verification.
 
 ## Resume checkpoint
 
-Current task: T3a2. Next: implement S3/Typesense clients with real backing-service
-verification. PostgreSQL primitives verified; see docs/persistence.md. Continue to production HTLK hosting
-using existing public interfaces and role contracts. Provider orphan limitation is
-accepted; no adaptation needed. Preserve this plan; cleanup/final push happen only
-after full verification.
+Current task: T3b. Next: commit verified backing clients, then implement one shared
+production HTLK host, exact role input/output contracts and live descriptor checks
+using existing public APIs. T3c must authorize memberships/grants/protected reads
+within a consistent transaction; primitive hydration calls alone are not sufficient.
+Provider orphan limitation is accepted; no adaptation needed. Preserve this plan;
+cleanup/final push happen only after full verification.

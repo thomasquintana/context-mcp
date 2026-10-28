@@ -56,5 +56,45 @@ Five actual-database scenarios passed:
 - Concurrent first admissions return one receipt; changed requests conflict.
 - Concurrent worker claims return distinct pending jobs exactly once.
 
-S3-compatible object storage and Typesense client implementation/verification are
-the next persistence subtask. Full application recovery and purge are later gates.
+## S3-compatible payloads
+
+`Blobs` uses an existing operator-provisioned bucket, explicit credentials,
+path-style addressing and bounded requests. The application supplies generated
+keys. Create-only writes use the S3 conditional-write contract and cannot silently
+overwrite an immutable object. Small reads check advertised and streamed sizes;
+large source downloads stream into newly created private files while checking the
+exact size and SHA-256. A mismatch removes the partial file. Upload/download URLs
+are explicitly authorized by the caller and limited to at most 15 minutes.
+
+Real MinIO acceptance covered conditional writes, signed PUT/GET transfers, bounded
+reads, streaming verification, removal of mismatched staging, and idempotent purge.
+The local server was MinIO DEVELOPMENT.GOGET, image
+`sha256:d84beaf11d584d65346338ed90958ddae511db3c5841186e1d93a34a40b9a8fa`.
+This is measured protocol evidence, not a portable release-image claim. Production
+uses operator-selected S3 infrastructure; portable development provisioning is a
+delivery task.
+
+## Derived Typesense index
+
+`Search` creates/checks its configured vector dimension and fields, bounds text and
+vectors, rejects nonfinite values, and upserts deterministic content IDs. Hybrid
+queries require an explicit bounded batch of authorized, published content IDs.
+Empty permission sets return no results. Returned IDs are rechecked against that
+allowlist; bodies must be hydrated from PostgreSQL. The client does not expose
+unauthorized totals or treat index body copies as authoritative evidence.
+
+The real Typesense 29.1 acceptance test covered collection creation/reopening,
+hybrid matching with an equally relevant unauthorized document, empty scope,
+dimension mismatch and repeated deletion. Image digest:
+`sha256:2d9a7e348ce0de03a6061291023c54f83c47f0fa81f26b1b0d1110286e415b0c`.
+
+Run the two external-service tests with explicit isolated service endpoints:
+
+```console
+CONTEXT_TEST_S3_ENDPOINT=http://127.0.0.1:59000 CONTEXT_TEST_S3_ACCESS_KEY=context-test CONTEXT_TEST_S3_SECRET_KEY=context-test-secret CONTEXT_TEST_TYPESENSE_ENDPOINT=http://127.0.0.1:58108 CONTEXT_TEST_TYPESENSE_KEY=context-test-only-key cargo test -p context-storage --test backing_services -- --ignored
+```
+
+These credentials are public disposable-test values. Tests create/delete their own
+random bucket/collection. Full application authorization, batching across large
+authorized scopes, embedding-space/model identity, transactional publication and
+recovery/purge coordination remain service/application responsibilities.

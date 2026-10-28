@@ -88,7 +88,7 @@
 - Initialize main, configure existing origin, and add session guidance.
 - Verify remote and commit this planning checkpoint.
 
-### T1 — Specification and provider-neutral domain contracts [pending]
+### T1 — Specification and provider-neutral domain contracts [completed]
 
 - Write README, full product/architecture specification, supported-format matrix,
   API/workflow contracts, and explicit acceptance criteria.
@@ -100,7 +100,7 @@
 - Verify formatting, domain invariants, compilation, and public documentation.
 - Update plan and commit.
 
-### T2 — Existing-HTLK integration spike [pending]
+### T2 — Existing-HTLK integration spike [in progress]
 
 - Resolve dependency using unchanged public HTLK APIs and existing graph/catalog/
   deployment configuration. Record the exact compatible versions/descriptors.
@@ -165,10 +165,28 @@
 - Initial repository check: empty local directory; existing empty origin verified.
 - T0: saved plan and root AGENTS guidance; initialized main with existing GitHub
   origin. Rust/cargo 1.98.0 available; Docker Desktop daemon reachable. No sibling
-  changes. Planning checkpoint commit follows this update.
+  changes. Commit: `4ec3963` (Record implementation plan and architecture boundaries).
+- T1: added Apache-2.0 license, pinned Rust workspace, provider-neutral context-core
+  contracts and facade, README/contribution guidance, full specification, logical
+  API contracts and acceptance/evidence matrix. Domain tests exercise scope/ACL
+  intersection, cross-tenant inheritance, wrong-target/cycle denial, terminal-job
+  immutability, publication fences and mixed-source transitive purge with retained
+  independent citations. No provider or service is claimed implemented.
+- T1 verification: cargo fmt --all --check; cargo clippy --workspace --all-targets
+  --all-features --locked -- -D warnings; cargo test --workspace --all-features
+  --locked (5 passed); RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features
+  --no-deps --locked; cargo package --workspace --allow-dirty --locked --target-dir
+  target/package-t1 (both packages built from their archives). Task commit follows.
+- T2 research: existing HTLK NativeMcpAdapter supports the necessary stdio/HTTP
+  calls without a custom adapter. Pin inspected HTLK revision
+  3448acb5dc7cebef4d08ef37bb79757fea780659. Actual providers inspected at llm-mcp
+  a9b6d2fe3fed686dd2ca2fb67591613f0cf44cb8 and mcp-sandbox
+  8c649a415ba7be6aa6e15a4dc51e56dc5990eae0. These are research observations,
+  not executed-provider verification.
 
 ## Resume checkpoint
 
-Current task: T1. Next: write specification/domain contracts and research existing
-HTLK integration examples before adding any integration mechanism. T0 files are
-ready for the planning-checkpoint commit.
+Current task: T2. Next: commit T1, read the existing HTLK capability runner, then
+build a context-owned integration host using unchanged public HTLK APIs. Build any
+provider binaries into context-mcp/target, never edit or generate files in siblings.
+All MCP discovery/calls must use HTLK. Validate real providers before any adaptation.

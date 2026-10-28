@@ -1,0 +1,26 @@
+# Acceptance and evidence
+
+Status describes the current checkout, not intended capability. Each production
+claim needs observed evidence; fixture coverage cannot establish provider behavior.
+
+| ID | Criterion | Current evidence |
+| --- | --- | --- |
+| A01 | Typed, provider-neutral source/memory/context contracts | Implemented in context-core |
+| A02 | Credential scope and inherited/cross-tenant grants both required | Domain unit test; persistence/HTTP verification pending |
+| A03 | Terminal jobs immutable; stale generation cannot publish | Domain unit tests; transactional verification pending |
+| A04 | Transitive mixed-source purge; citation-only assertions survive | Domain unit test including cyclic lineage; physical cleanup pending |
+| A05 | Real unchanged HTLK compilation/admission/execution | Pending integration spike |
+| A06 | Real initial sandbox execution and model processing | Pending; no fixture-only substitution |
+| A07 | Complete agreed media-format matrix | Specified; implementation/format fixtures pending |
+| A08 | All-or-nothing revision publication and durable restart recovery | Pending |
+| A09 | OIDC validation, service credentials and current resource authorization | Pending |
+| A10 | Uploads/URLs, CLI, stdio and Streamable HTTP | Pending |
+| A11 | Hybrid retrieval, budgeted maps and source navigation | Pending |
+| A12 | Revisioned memory, concurrent reconciliation and cited synthesis | Contracts implemented; service behavior pending |
+| A13 | Revocation and app-managed purge across storage, history and temporary files | Pending |
+| A14 | Provider replacement through graphs/catalogs/bindings | Architectural boundary; alternative-provider evidence pending |
+| A15 | CI, dependency/license policy, coverage and reproducible releases | Local contract checks available; delivery gates pending |
+
+Initial domain tests cover independent authorization decisions, invalid state
+transitions, publication fencing and transitive derivation/citation semantics.
+They do not prove server security, real media extraction or external compatibility.

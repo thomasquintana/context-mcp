@@ -356,6 +356,7 @@ graph acceptance.stdio_roundtrip {
         let delete_bucket=objects.signed_url(Method::DELETE,&Path::from(""),Duration::from_secs(60)).await.unwrap();
         assert!(setup.delete(delete_bucket).send().await.unwrap().status().is_success());
         assert!(setup.delete(format!("{typesense}/collections/{index}")).header("X-TYPESENSE-API-KEY",index_key).send().await.unwrap().status().is_success());
+        sqlx::query("DELETE FROM context.index_bindings WHERE collection=$1").bind(&index).execute(db.pool()).await.unwrap();
         db.close().await;
     });
 }

@@ -130,7 +130,7 @@ impl Application {
             &json!({}),
         )
         .await?;
-        let row=sqlx::query("SELECT a.current_revision,v.sha256,v.size_bytes,v.media_type,c.body,r.parent,r.owner FROM context.assets a JOIN context.resources r ON r.id=a.id JOIN context.revisions v ON v.asset=a.id JOIN context.content c ON c.id=v.content WHERE a.id=$1 AND v.id=$2 AND c.published")
+        let row=sqlx::query("SELECT a.current_revision,v.sha256,v.size_bytes,v.media_type,c.body,r.parent,r.owner FROM context.assets a JOIN context.resources r ON r.id=a.id JOIN context.revisions v ON v.asset=a.id JOIN context.content c ON c.id=v.content WHERE a.id=$1 AND v.id=$2 AND c.published AND NOT c.purging")
             .bind(Uuid::from(asset)).bind(Uuid::from(expected)).fetch_optional(&mut **view.transaction()).await.map_err(context_storage::Error::from)?.ok_or(context_storage::Error::Conflict)?;
         let body: Value = row.try_get("body").map_err(context_storage::Error::from)?;
         let bytes: Vec<u8> = row
@@ -155,7 +155,7 @@ impl Application {
             profile,
             idempotency_key: format!("{key}:reprocess-upload"),
         };
-        if resumed &&let Some(child)=sqlx::query("SELECT u.receipt AS upload,u.request_digest AS upload_digest,f.receipt,f.request_digest AS finalize_digest FROM context.receipts u JOIN context.receipts f ON f.principal=u.principal WHERE u.principal=$1 AND u.operation='create_upload' AND u.idempotency_key=$2 AND f.operation='finalize_upload' AND f.idempotency_key=$3")
+        if resumed &&let Some(child)=sqlx::query("SELECT u.receipt AS upload,u.request_digest AS upload_digest,f.receipt,f.request_digest AS finalize_digest FROM context.receipts u JOIN context.receipts f ON f.principal=u.principal WHERE u.principal=$1 AND u.operation='create_upload' AND u.idempotency_key=encode(sha256(convert_to($2,'UTF8')),'hex') AND f.operation='finalize_upload' AND f.idempotency_key=encode(sha256(convert_to($3,'UTF8')),'hex')")
             .bind(Uuid::from(actor.principal)).bind(&args.idempotency_key).bind(format!("{key}:reprocess-finalize")).fetch_optional(&mut **view.transaction()).await.map_err(context_storage::Error::from)? {
                 let uploaded:Value=child.try_get("upload").map_err(context_storage::Error::from)?;
                 let upload:Uuid=uploaded["upload"].as_str().ok_or(Error::Contract)?.parse().map_err(|_|Error::Contract)?;
@@ -171,6 +171,8 @@ impl Application {
             return Err(context_storage::Error::Conflict.into());
         }
         view.commit().await?;
+        let plane = self.data_plane()?;
+        let _publication = plane.publications.lock().await;
         let transfer = self.create_upload(actor, args).await?;
         if transfer["finalized"] != true {
             let plane = self.data_plane()?;
@@ -183,6 +185,12 @@ impl Application {
                 .await?
                 .commit()
                 .await?;
+            let safe:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.revisions v JOIN context.content c ON c.id=v.content WHERE v.id=$1 AND v.asset=$2 AND NOT c.purging)").bind(Uuid::from(expected)).bind(Uuid::from(asset)).fetch_one(self.database.pool()).await.map_err(context_storage::Error::from)?;
+            if !safe {
+                return Err(context_storage::Error::Unavailable.into());
+            }
+            sqlx::query("INSERT INTO context.dependencies(source,dependent,relationship) SELECT v.content,n.content,'derivation' FROM context.revisions v,context.revisions n WHERE v.id=$1 AND n.id=$2 ON CONFLICT DO NOTHING")
+                .bind(Uuid::from(expected)).bind(Uuid::parse_str(transfer["revision"].as_str().ok_or(Error::Contract)?).map_err(|_|Error::Contract)?).execute(self.database.pool()).await.map_err(context_storage::Error::from)?;
             let target: String = sqlx::query_scalar(
                 "SELECT object_key FROM context.uploads WHERE id=$1 AND principal=$2",
             )
@@ -392,7 +400,7 @@ impl Application {
 
     async fn upload_transfer(&self, actor: &Authentication, upload: Uuid) -> Result<Value> {
         let plane = self.data_plane()?;
-        let row=sqlx::query("SELECT *,floor(greatest(0,extract(epoch FROM(expires_at-now()))))::bigint AS seconds_left FROM context.uploads WHERE id=$1 AND principal=$2")
+        let row=sqlx::query("SELECT u.*,floor(greatest(0,extract(epoch FROM(u.expires_at-now()))))::bigint AS seconds_left FROM context.uploads u JOIN context.revisions v ON v.id=u.revision JOIN context.content c ON c.id=v.content WHERE u.id=$1 AND u.principal=$2 AND NOT c.purging")
             .bind(upload).bind(Uuid::from(actor.principal)).fetch_optional(self.database.pool()).await.map_err(context_storage::Error::from)?.ok_or(context_storage::Error::Unavailable)?;
         let asset = AssetId::from(
             row.try_get::<Uuid, _>("asset")
@@ -468,7 +476,7 @@ impl Application {
     ) -> Result<Value> {
         let plane = self.data_plane()?;
         let request_hash: [u8; 32] = Sha256::digest(upload.as_bytes()).into();
-        if let Some(row)=sqlx::query("SELECT request_digest,receipt FROM context.receipts WHERE principal=$1 AND operation='finalize_upload' AND idempotency_key=$2")
+        if let Some(row)=sqlx::query("SELECT request_digest,receipt FROM context.receipts WHERE principal=$1 AND operation='finalize_upload' AND idempotency_key=encode(sha256(convert_to($2,'UTF8')),'hex')")
             .bind(Uuid::from(actor.principal)).bind(key).fetch_optional(self.database.pool()).await.map_err(context_storage::Error::from)? {
             if row.try_get::<Vec<u8>,_>("request_digest").map_err(context_storage::Error::from)?!=request_hash {return Err(context_storage::Error::Conflict.into());}
             let receipt:Value=row.try_get("receipt").map_err(context_storage::Error::from)?;
@@ -542,7 +550,7 @@ impl Application {
                 return Err(context_storage::Error::Conflict.into());
             }
         }
-        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.uploads u JOIN context.assets a ON a.id=u.asset WHERE u.id=$1 AND u.principal=$2 AND u.expires_at>now() AND a.generation=u.generation AND NOT u.finalized)")
+        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.uploads u JOIN context.assets a ON a.id=u.asset JOIN context.revisions v ON v.id=u.revision JOIN context.content c ON c.id=v.content WHERE u.id=$1 AND u.principal=$2 AND u.expires_at>now() AND a.generation=u.generation AND NOT u.finalized AND NOT c.purging)")
             .bind(upload).bind(Uuid::from(actor.principal)).fetch_one(&mut **tx).await.map_err(context_storage::Error::from)?;
         if !valid {
             return Err(context_storage::Error::Conflict.into());

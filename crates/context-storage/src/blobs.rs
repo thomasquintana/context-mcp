@@ -353,6 +353,50 @@ impl Blobs {
             .signed_url(Method::HEAD, &Path::from(""), Duration::from_secs(60))
             .await?;
         self.client.head(url).send().await?.error_for_status()?;
+        let url = self
+            .store
+            .signed_url_opts(
+                Method::GET,
+                &Path::from(""),
+                Duration::from_secs(60),
+                &SignedUrlOptions::new().with_query([("versioning", "")]),
+            )
+            .await?;
+        let response = self.client.get(url).send().await?.error_for_status()?;
+        let mut bytes = Vec::new();
+        let mut stream = response.bytes_stream();
+        while let Some(part) = stream.try_next().await? {
+            bytes.extend_from_slice(&part);
+            if bytes.len() > 16384 {
+                return Err(Error::Integrity);
+            }
+        }
+        #[derive(serde::Deserialize)]
+        struct Versioning {
+            #[serde(rename = "Status")]
+            status: Option<String>,
+        }
+        let versioning: Versioning =
+            quick_xml::de::from_reader(bytes.as_slice()).map_err(|_| Error::Invalid)?;
+        if versioning.status.is_some_and(|status| !status.is_empty()) {
+            return Err(Error::Invalid);
+        }
+        Ok(())
+    }
+
+    /// Atomically erase temporary upload bytes while blocking late conditional PUTs.
+    ///
+    /// The permanent zero-byte object is an opaque operational fence, not retained
+    /// payload. Never delete these retired upload-key fences or reuse their keys.
+    /// # Errors
+    /// Rejects keys outside the generated upload namespace and storage failures.
+    pub async fn fence_upload(&self, key: &str) -> Result<()> {
+        if !key.starts_with("uploads/") {
+            return Err(Error::Invalid);
+        }
+        self.store
+            .put(&managed_path(key)?, Bytes::new().into())
+            .await?;
         Ok(())
     }
 
@@ -375,10 +419,15 @@ impl Blobs {
         }
         let length = size.to_string();
         let checksum = STANDARD.encode(sha256);
-        let options = SignedUrlOptions::new().with_signed_header(
-            HeaderName::from_static("x-amz-checksum-sha256"),
-            HeaderValue::from_str(&checksum).map_err(|_| Error::Invalid)?,
-        );
+        let options = SignedUrlOptions::new()
+            .with_signed_header(
+                HeaderName::from_static("x-amz-checksum-sha256"),
+                HeaderValue::from_str(&checksum).map_err(|_| Error::Invalid)?,
+            )
+            .with_signed_header(
+                HeaderName::from_static("if-none-match"),
+                HeaderValue::from_static("*"),
+            );
         let url = self
             .store
             .signed_url_opts(Method::PUT, &managed_path(key)?, lifetime, &options)
@@ -388,6 +437,7 @@ impl Blobs {
             [
                 ("content-length".into(), length),
                 ("x-amz-checksum-sha256".into(), checksum),
+                ("if-none-match".into(), "*".into()),
             ]
             .into(),
         ))

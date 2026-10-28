@@ -342,7 +342,7 @@ impl Application {
         };
         // Recover the completed child admission even after its transfer-session
         // row expired, if the process stopped before saving the parent receipt.
-        if let Some(row)=sqlx::query("SELECT u.request_digest,u.receipt AS upload_receipt,f.request_digest AS finalize_digest,f.receipt FROM context.receipts u JOIN context.receipts f ON f.principal=u.principal WHERE u.principal=$1 AND u.operation='create_upload' AND u.idempotency_key=$2 AND f.operation='finalize_upload' AND f.idempotency_key=$3")
+        if let Some(row)=sqlx::query("SELECT u.request_digest,u.receipt AS upload_receipt,f.request_digest AS finalize_digest,f.receipt FROM context.receipts u JOIN context.receipts f ON f.principal=u.principal WHERE u.principal=$1 AND u.operation='create_upload' AND u.idempotency_key=encode(sha256(convert_to($2,'UTF8')),'hex') AND f.operation='finalize_upload' AND f.idempotency_key=encode(sha256(convert_to($3,'UTF8')),'hex')")
             .bind(Uuid::from(actor.principal)).bind(format!("{key}:upload")).bind(format!("{key}:finalize"))
             .fetch_optional(self.database.pool()).await.map_err(context_storage::Error::from)? {
             let expected=crate::uploads::intent_digest(&upload_args,"text/plain",&crate::uploads::digest(&hash)?)?;
@@ -372,12 +372,12 @@ impl Application {
             for (name, value) in transfer["headers"].as_object().ok_or(Error::Contract)? {
                 request = request.header(name, value.as_str().ok_or(Error::Contract)?);
             }
-            request
-                .send()
-                .await
-                .map_err(context_storage::Error::from)?
-                .error_for_status()
-                .map_err(context_storage::Error::from)?;
+            let response = request.send().await.map_err(context_storage::Error::from)?;
+            if response.status() != reqwest::StatusCode::PRECONDITION_FAILED {
+                response
+                    .error_for_status()
+                    .map_err(context_storage::Error::from)?;
+            }
         }
         let result = self
             .finalize_upload(

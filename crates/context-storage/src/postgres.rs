@@ -6,6 +6,7 @@ use context_core::{
     ids::{AssetId, PrincipalId, RevisionId, TenantId, WorkspaceId},
 };
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Row, Transaction, postgres::PgPoolOptions};
 use std::{collections::BTreeSet, time::Duration};
 use uuid::Uuid;
@@ -265,12 +266,12 @@ pub async fn publish_revision(
     revision: RevisionId,
     generation: i64,
 ) -> Result<()> {
-    let changed = sqlx::query("UPDATE context.assets a SET current_revision=$2 WHERE a.id=$1 AND a.generation=$3 AND NOT EXISTS(WITH RECURSIVE ancestors AS (SELECT id,parent,purging FROM context.resources WHERE id=a.id UNION ALL SELECT r.id,r.parent,r.purging FROM context.resources r JOIN ancestors p ON r.id=p.parent) SELECT 1 FROM ancestors WHERE purging) AND EXISTS(SELECT 1 FROM context.revisions v WHERE v.id=$2 AND v.asset=a.id)")
+    let changed = sqlx::query("UPDATE context.assets a SET current_revision=$2 WHERE a.id=$1 AND a.generation=$3 AND NOT EXISTS(WITH RECURSIVE ancestors AS (SELECT id,parent,purging FROM context.resources WHERE id=a.id UNION ALL SELECT r.id,r.parent,r.purging FROM context.resources r JOIN ancestors p ON r.id=p.parent) SELECT 1 FROM ancestors WHERE purging) AND EXISTS(SELECT 1 FROM context.revisions v JOIN context.content c ON c.id=v.content WHERE v.id=$2 AND v.asset=a.id AND NOT c.purging)")
         .bind(Uuid::from(asset)).bind(Uuid::from(revision)).bind(generation).execute(&mut **tx).await?;
     if changed.rows_affected() != 1 {
         return Err(Error::Conflict);
     }
-    sqlx::query("UPDATE context.content SET published=true WHERE revision=$1")
+    sqlx::query("UPDATE context.content SET published=true WHERE revision=$1 AND NOT purging")
         .bind(Uuid::from(revision))
         .execute(&mut **tx)
         .await?;
@@ -302,7 +303,7 @@ pub async fn receipt(
         return Err(Error::Invalid);
     }
     let row = sqlx::query("INSERT INTO context.receipts(principal,operation,idempotency_key,request_digest,receipt) VALUES($1,$2,$3,$4,$5) ON CONFLICT(principal,operation,idempotency_key) DO UPDATE SET idempotency_key=EXCLUDED.idempotency_key RETURNING request_digest,receipt")
-        .bind(Uuid::from(principal)).bind(operation).bind(key).bind(digest.as_slice()).bind(value)
+        .bind(Uuid::from(principal)).bind(operation).bind(receipt_key(key)).bind(digest.as_slice()).bind(value)
         .fetch_one(&mut **tx).await?;
     if row.try_get::<Vec<u8>, _>("request_digest")? != digest {
         return Err(Error::Conflict);
@@ -328,7 +329,8 @@ pub async fn existing_receipt(
     if key.is_empty() || key.len() > 256 || operation.is_empty() || operation.len() > 128 {
         return Err(Error::Invalid);
     }
-    let lock_key = serde_json::to_string(&(principal, operation, key))?;
+    let key = receipt_key(key);
+    let lock_key = serde_json::to_string(&(principal, operation, &key))?;
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
         .bind(lock_key)
         .execute(&mut **tx)
@@ -342,6 +344,14 @@ pub async fn existing_receipt(
         }
         Some(_) => Err(Error::Conflict),
     }
+}
+
+/// Opaque lookup handle for a caller-chosen idempotency key; never retain raw key text.
+pub fn receipt_key(key: &str) -> String {
+    Sha256::digest(key.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// Look up the owning project and tenant for an actual collection hierarchy.

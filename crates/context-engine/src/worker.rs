@@ -242,7 +242,7 @@ impl Application {
     }
 
     pub(crate) async fn live(&self, job: &Job) -> Result<()> {
-        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.jobs j JOIN context.assets a ON a.id=j.asset JOIN context.resources r ON r.id=a.id WHERE j.id=$1 AND j.state='running' AND j.generation=a.generation AND NOT r.purging AND j.deadline>now())")
+        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.jobs j JOIN context.assets a ON a.id=j.asset JOIN context.resources r ON r.id=a.id JOIN context.revisions v ON v.id=j.revision JOIN context.content c ON c.id=v.content WHERE j.id=$1 AND j.state='running' AND j.generation=a.generation AND NOT r.purging AND NOT c.purging AND j.deadline>now())")
             .bind(Uuid::from(job.id)).fetch_one(self.database.pool()).await.map_err(context_storage::Error::from)?;
         if !valid {
             return Err(Error::Cancelled);
@@ -876,17 +876,11 @@ impl Application {
         .fetch_all(self.database.pool())
         .await
         .map_err(context_storage::Error::from)?;
-        let key =
-            std::env::var(&plane.config.typesense_key_env).map_err(|_| Error::Configuration)?;
-        let index = context_storage::search::Search::new(
-            &plane.config.typesense_endpoint,
-            &key,
-            &job.pipeline.space.collection,
-            job.pipeline.space.dimensions,
-        )?;
-        for id in &ids {
-            index.delete((*id).into()).await?;
-        }
+        self.delete_index_ids(
+            &job.pipeline.profile.space,
+            &ids.iter().copied().map(ContentId::from).collect::<Vec<_>>(),
+        )
+        .await?;
         let keys: Vec<String> =
             sqlx::query_scalar("SELECT object_key FROM context.objects WHERE content=ANY($1)")
                 .bind(&ids)
@@ -1068,7 +1062,7 @@ impl Application {
             let temporary: String = row
                 .try_get("object_key")
                 .map_err(context_storage::Error::from)?;
-            plane.blobs.delete(&temporary).await?;
+            plane.blobs.fence_upload(&temporary).await?;
             sqlx::query("DELETE FROM context.objects WHERE object_key=$1")
                 .bind(&temporary)
                 .execute(&mut *tx)
@@ -1115,7 +1109,7 @@ impl Application {
             .copied()
             .map(Uuid::from)
             .collect::<Vec<_>>();
-        let pending:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM context.jobs WHERE kind IN ('ingest','reprocess','media') AND state IN ('failed','cancelled') AND detail->>'cleanup_pending'='true' AND NOT(id=ANY($1)) LIMIT 4")
+        let pending:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM context.jobs WHERE kind IN ('ingest','reprocess','media') AND state IN ('failed','cancelled') AND detail->>'cleanup_pending'='true' AND NOT(id=ANY($1)) ORDER BY updated_at LIMIT 4")
             .bind(active).fetch_all(self.database.pool()).await.map_err(context_storage::Error::from)?;
         for id in pending {
             let id = JobId::from(id);
@@ -1138,6 +1132,7 @@ impl Application {
             plane.controls.lock().await.remove(&id);
             control.finished.notify_waiters();
         }
+        self.purge_pass().await?;
         Ok(())
     }
 

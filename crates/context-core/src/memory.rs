@@ -62,6 +62,8 @@ pub struct MemoryRevision {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum MemoryView {
+    /// All current contributions were permanently removed; retained history is explicit.
+    Unavailable,
     /// One accepted current revision.
     Current {
         /// Current revision.

@@ -10,6 +10,7 @@ use context_storage::{
     blobs::{BlobConfig, Blobs},
     search::{Search, SearchDocument},
 };
+use futures_util::StreamExt;
 use object_store::{
     aws::AmazonS3Builder,
     path::Path,
@@ -169,11 +170,86 @@ async fn s3_signed_transfers_integrity_limits_and_idempotent_purge() {
         Err(Error::Integrity)
     ));
     assert!(blobs.get("immutable/rejected", 1024).await.is_err());
+    blobs.ready().await.unwrap();
+    let (url, headers) = blobs
+        .bounded_upload_url("uploads/inflight", 16, &expected, Duration::from_secs(60))
+        .await
+        .unwrap();
+    let (started, observed) = tokio::sync::oneshot::channel();
+    let (release, proceed) = tokio::sync::oneshot::channel();
+    let body = futures_util::stream::once(async move {
+        let _ = started.send(());
+        Ok::<_, std::io::Error>(Bytes::from_static(b"upl"))
+    })
+    .chain(futures_util::stream::once(async move {
+        proceed.await.map_err(std::io::Error::other)?;
+        Ok::<_, std::io::Error>(Bytes::from_static(b"oaded fixture"))
+    }));
+    let uploading = tokio::spawn({
+        let client = client.clone();
+        let url = url.clone();
+        let headers = headers.clone();
+        async move {
+            let mut request = client.put(url).body(reqwest::Body::wrap_stream(body));
+            for (k, v) in headers {
+                request = request.header(k, v);
+            }
+            request.send().await.unwrap()
+        }
+    });
+    observed.await.unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let fenced = tokio::spawn({
+        let blobs = blobs.clone();
+        async move { blobs.fence_upload("uploads/inflight").await }
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let fence_won = fenced.is_finished();
+    let _ = release.send(());
+    fenced.await.unwrap().unwrap();
+    let completed = uploading.await.unwrap();
+    if fence_won {
+        assert_eq!(completed.status(), reqwest::StatusCode::PRECONDITION_FAILED);
+    } else {
+        assert!(
+            completed.status().is_success()
+                || completed.status() == reqwest::StatusCode::PRECONDITION_FAILED
+        );
+    }
+    assert_eq!(
+        blobs.size("uploads/inflight").await.unwrap(),
+        0,
+        "late PUT recreated purged payload"
+    );
+    let mut repeat = client.put(url).body("uploaded fixture");
+    for (k, v) in headers {
+        repeat = repeat.header(k, v);
+    }
+    assert_eq!(
+        repeat.send().await.unwrap().status(),
+        reqwest::StatusCode::PRECONDITION_FAILED
+    );
+    // Disposable bucket teardown, not production fence retirement.
+    blobs.delete("uploads/inflight").await.unwrap();
     blobs.delete("immutable/source").await.unwrap();
     blobs.delete("uploads/session").await.unwrap();
     blobs.delete("source/original").await.unwrap();
     blobs.delete("source/original").await.unwrap();
     assert!(blobs.get("source/original", 1024).await.is_err());
+    let versioning = admin
+        .signed_url_opts(
+            Method::PUT,
+            &root,
+            Duration::from_secs(60),
+            &object_store::signer::SignedUrlOptions::new().with_query([("versioning", "")]),
+        )
+        .await
+        .unwrap();
+    assert!(client.put(versioning).body("<VersioningConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Status>Enabled</Status></VersioningConfiguration>").send().await.unwrap().status().is_success());
+    assert!(
+        blobs.ready().await.is_err(),
+        "versioned bucket silently accepted a permanent-purge contract"
+    );
     let url = admin
         .signed_url(Method::DELETE, &root, Duration::from_secs(60))
         .await

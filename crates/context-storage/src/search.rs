@@ -163,6 +163,21 @@ impl Search {
         Ok(())
     }
 
+    /// Remove one workspace's derived index entries before explicit authoritative repair.
+    ///
+    /// # Errors
+    /// Returns backing-service failures; a missing collection is already empty.
+    pub async fn delete_workspace(&self, workspace: WorkspaceId) -> Result<()> {
+        let mut url = self.url(&format!("collections/{}/documents", self.collection))?;
+        url.query_pairs_mut()
+            .append_pair("filter_by", &format!("workspace:={workspace}"));
+        let response = self.client.delete(url).send().await?;
+        if response.status() != StatusCode::NOT_FOUND {
+            Self::response(response).await?;
+        }
+        Ok(())
+    }
+
     /// Stage/upsert one deterministic content ID before authoritative publication.
     ///
     /// # Errors

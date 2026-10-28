@@ -15,6 +15,9 @@ See context-services.md for retrieval/budget/history/navigation and sharing cont
 Semantic memory and cited generation tools are `context_write_memory`,
 `context_reconcile_memory`, `context_read_memory` and `context_synthesize`; see
 memory-and-synthesis.md for version/conflict/authority and transient/save boundaries.
+Permanent deletion/repair tools are `context_purge`, `context_purge_status`, and
+`context_rebuild_index`; see permanent-purge.md for closure, fencing and physical
+cleanup completion, including approved content-free upload fences.
 See ingestion.md for implemented job/role contracts and server-foundation.md for
 setup. The remaining capabilities below await their application milestones.
 

@@ -8,8 +8,9 @@ use context_core::{
 };
 use context_engine::{Application, Config, bootstrap};
 use context_storage::postgres::Database;
+use futures_util::TryStreamExt;
 use object_store::{
-    ObjectStoreExt,
+    ObjectStore, ObjectStoreExt,
     aws::AmazonS3Builder,
     path::Path,
     signer::{Method, Signer},
@@ -279,6 +280,15 @@ graph fixture.{role} {{
 
     async fn close(self) {
         self.app.shutdown().await.unwrap();
+        let remaining = self.admin.list(None).try_collect::<Vec<_>>().await.unwrap();
+        for object in remaining {
+            self.admin.delete(&object.location).await.unwrap();
+        }
+        sqlx::query("DELETE FROM context.index_bindings WHERE collection=$1")
+            .bind(&self.index)
+            .execute(self.db.pool())
+            .await
+            .unwrap();
         let keys:Vec<String>=sqlx::query_scalar("SELECT o.object_key FROM context.objects o JOIN context.content c ON c.id=o.content WHERE c.workspace=$1")
             .bind(Uuid::from(self.workspace)).fetch_all(self.db.pool()).await.unwrap();
         for key in keys {
@@ -340,7 +350,7 @@ fn durable_admission_publication_failure_cancel_and_retry_use_real_backing_servi
             collection:fixture.collection,asset:None,name:"fixture.txt".into(),media_type:"text/plain".into(),size_bytes:15,sha256:hash.clone(),
             profile:None,idempotency_key:"crossed:upload".into(),
         }).await.unwrap();
-        let original_upload:Value=sqlx::query_scalar("SELECT receipt FROM context.receipts WHERE principal=$1 AND operation='create_upload' AND idempotency_key='text-1:upload'")
+        let original_upload:Value=sqlx::query_scalar("SELECT receipt FROM context.receipts WHERE principal=$1 AND operation='create_upload' AND idempotency_key=encode(sha256(convert_to('text-1:upload','UTF8')),'hex')")
             .bind(Uuid::from(fixture.principal)).fetch_one(fixture.db.pool()).await.unwrap();
         fixture.app.finalize_upload(&fixture.actor,original_upload["upload"].as_str().unwrap().parse().unwrap(),"crossed:finalize").await.unwrap();
         assert!(matches!(fixture.app.ingest_text(&fixture.actor,fixture.collection,"fixture.txt","fixture content",None,"crossed").await,
@@ -397,7 +407,7 @@ fn durable_admission_publication_failure_cancel_and_retry_use_real_backing_servi
         fixture.app.shutdown().await.unwrap();
         // Simulate the cross-operation acknowledgement gap and later transfer-row
         // expiration. Child receipts must recover the existing accepted job.
-        sqlx::query("DELETE FROM context.receipts WHERE principal=$1 AND operation='ingest_text' AND idempotency_key='recover-1'")
+        sqlx::query("DELETE FROM context.receipts WHERE principal=$1 AND operation='ingest_text' AND idempotency_key=encode(sha256(convert_to('recover-1','UTF8')),'hex')")
             .bind(Uuid::from(fixture.principal)).execute(fixture.db.pool()).await.unwrap();
         sqlx::query("DELETE FROM context.uploads WHERE job=$1").bind(Uuid::from(job)).execute(fixture.db.pool()).await.unwrap();
         fixture.app=Arc::new(Application::open(&fixture.config,fixture._dir.path()).await.unwrap());
@@ -611,7 +621,7 @@ fn exact_url_acquisition_is_bounded_allowlisted_and_recovers_child_receipts() {
         let admitted=fixture.app.ingest_url(&fixture.actor,args.clone()).await.unwrap();
         let job:JobId=admitted["job"].as_str().unwrap().parse().unwrap();assert_eq!(fixture.wait(job).await["state"],"succeeded");
         assert_eq!(fixture.app.ingest_url(&fixture.actor,args.clone()).await.unwrap(),admitted);
-        sqlx::query("DELETE FROM context.receipts WHERE principal=$1 AND operation='ingest_url' AND idempotency_key='url-1'")
+        sqlx::query("DELETE FROM context.receipts WHERE principal=$1 AND operation='ingest_url' AND idempotency_key=encode(sha256(convert_to('url-1','UTF8')),'hex')")
             .bind(Uuid::from(fixture.principal)).execute(fixture.db.pool()).await.unwrap();
         sqlx::query("DELETE FROM context.uploads WHERE job=$1").bind(Uuid::from(job)).execute(fixture.db.pool()).await.unwrap();
         assert_eq!(fixture.app.ingest_url(&fixture.actor,args.clone()).await.unwrap(),admitted);
@@ -1333,5 +1343,52 @@ fn source_revocation_hides_derivatives_but_preserves_independent_citation_only_a
             independent["content"].as_str().unwrap()
         );
         fixture.close().await;
+    });
+}
+
+#[test]
+#[ignore = "requires isolated PostgreSQL, MinIO and Typesense; real transitive physical purge/restart and pure model roles"]
+fn permanent_purge_survives_restart_erases_mixed_history_across_owners_and_fences_uploads() {
+    actix::System::new().block_on(async {
+        use context_core::{access::{Resource,Grant,Recipient},content::{SourceReference,SourceLocation},memory::MemoryValue};
+        use context_engine::purging::{Purge,Target};
+        let mut fixture=Fixture::open().await;fixture.app.start_workers().await.unwrap();
+        let a=fixture.app.ingest_text(&fixture.actor,fixture.collection,"private-a.txt","fixture content",None,"purge-a").await.unwrap();assert_eq!(fixture.wait(a["job"].as_str().unwrap().parse().unwrap()).await["state"],"succeeded");
+        let b=fixture.app.ingest_text(&fixture.actor,fixture.collection,"surviving-b.txt","fixture content",None,"purge-b").await.unwrap();assert_eq!(fixture.wait(b["job"].as_str().unwrap().parse().unwrap()).await["state"],"succeeded");
+        let reference=|value:&Value|SourceReference{asset:value["asset"].as_str().unwrap().parse().unwrap(),revision:value["revision"].as_str().unwrap().parse().unwrap(),location:SourceLocation::Asset,available:true};
+        let mut mixed=assertion(fixture.workspace,"Mixed source fact",MemoryValue::Text{statement:"Information from both sources".into()},0,"mixed-1");mixed.derived_from=vec![reference(&a),reference(&b)];let first=fixture.app.write_memory(&fixture.actor,mixed).await.unwrap();
+        let second=fixture.app.write_memory(&fixture.actor,assertion(fixture.workspace,"Mixed source fact",MemoryValue::Text{statement:"Information from both sources".into()},1,"mixed-2")).await.unwrap();
+        let summary=fixture.app.synthesize(&fixture.actor,context_engine::synthesis::Synthesize{workspace:fixture.workspace,question:"Use the mixed memory".into(),evidence:BTreeSet::from([second["content"].as_str().unwrap().parse().unwrap()]),token_budget:None,save:true,name:None,idempotency_key:Some("mixed-summary".into())}).await.unwrap();
+        let mut independent=assertion(fixture.workspace,"Independent citation",MemoryValue::Text{statement:"An independent claim with optional support".into()},0,"citation-only");independent.citations=vec![reference(&a)];let independent=fixture.app.write_memory(&fixture.actor,independent).await.unwrap();
+        let guest=fixture.db.identity("purge-guest",&Uuid::now_v7().to_string(),"service").await.unwrap();let foreign=bootstrap(&fixture.db,guest,"foreign derived knowledge").await.unwrap();let auth=Authenticator::open(fixture.db.clone(),None).await.unwrap();
+        let token=auth.issue_service(guest,&BTreeSet::from([Permission::Read,Permission::WriteMemory,Permission::Purge]),Duration::from_secs(600)).await.unwrap();let guest=auth.authenticate(token.secret()).await.unwrap();
+        let asset=reference(&a).asset;
+        fixture.app.set_access(&fixture.actor,context_engine::sharing::SetAccess{resource:Resource::Asset(asset),expected_acl_version:1,inherit:true,grants:vec![Grant{recipient:Recipient::Tenant(foreign.tenant),permissions:BTreeSet::from([Permission::Read,Permission::Purge])}],idempotency_key:"shared-source".into()}).await.unwrap();
+        let mut across=assertion(foreign.workspace,"Foreign derived fact",MemoryValue::Text{statement:"Derived from the shared original".into()},0,"foreign-derived");across.derived_from=vec![reference(&a)];let across=fixture.app.write_memory(&guest,across).await.unwrap();
+        let generation=fixture.app.resource(&fixture.actor,Resource::Asset(asset)).await.unwrap()["generation"].as_i64().unwrap();
+        assert!(fixture.app.purge(&guest,Purge{target:Target::Asset(asset),expected_generation:Some(generation),idempotency_key:"not-the-owner".into()}).await.is_err());
+        fixture.app.shutdown().await.unwrap();fixture.app=Arc::new(Application::open(&fixture.config,fixture._dir.path()).await.unwrap());
+        let hash=Sha256::digest(b"fixture content").iter().map(|v|format!("{v:02x}")).collect::<String>();
+        let mut metadata=context_engine::uploads::CreateUpload{collection:fixture.collection,asset:Some(asset),name:"pending-replacement.txt".into(),media_type:"text/plain".into(),size_bytes:15,sha256:hash,profile:None,idempotency_key:"pending-replacement".into()};
+        let transfer=fixture.app.create_upload(&fixture.actor,metadata.clone()).await.unwrap();let mut put=fixture.http.put(transfer["url"].as_str().unwrap()).body("fixture content");for(k,v)in transfer["headers"].as_object().unwrap(){put=put.header(k,v.as_str().unwrap());}assert!(put.send().await.unwrap().status().is_success());
+        fixture.app.finalize_upload(&fixture.actor,transfer["upload"].as_str().unwrap().parse().unwrap(),"pending-finalize").await.unwrap();
+        metadata.idempotency_key="late-upload".into();let late=fixture.app.create_upload(&fixture.actor,metadata).await.unwrap();
+        let keys:Vec<String>=sqlx::query_scalar("SELECT o.object_key FROM context.objects o JOIN context.content c ON c.id=o.content WHERE c.asset=$1").bind(Uuid::from(asset)).fetch_all(fixture.db.pool()).await.unwrap();
+        let generation=fixture.app.resource(&fixture.actor,Resource::Asset(asset)).await.unwrap()["generation"].as_i64().unwrap();
+        let started=fixture.app.purge(&fixture.actor,Purge{target:Target::Asset(asset),expected_generation:Some(generation),idempotency_key:"erase-sensitive-label".into()}).await.unwrap();let purge=Uuid::parse_str(started["purge"].as_str().unwrap()).unwrap();
+        assert!(fixture.app.asset_revision(&fixture.actor,asset,reference(&a).revision).await.is_err(),"purge did not close visibility at admission");
+        fixture.app.shutdown().await.unwrap();fixture.app=Arc::new(Application::open(&fixture.config,fixture._dir.path()).await.unwrap());fixture.app.start_workers().await.unwrap();
+        let mut completed=false;for _ in 0..1000 {if fixture.app.purge_status(&fixture.actor,purge).await.unwrap()["completed"]==true{completed=true;break;}actix::clock::sleep(Duration::from_millis(30)).await;}assert!(completed,"durable purge did not settle");
+        assert_eq!(fixture.app.purge(&fixture.actor,Purge{target:Target::Asset(asset),expected_generation:Some(generation),idempotency_key:"erase-sensitive-label".into()}).await.unwrap()["completed"],true);
+        let deleted=[&first,&second,&summary,&across].iter().map(|v|Uuid::parse_str(v["content"].as_str().unwrap()).unwrap()).collect::<Vec<_>>();let remaining:i64=sqlx::query_scalar("SELECT count(*) FROM context.content WHERE id=ANY($1)").bind(deleted).fetch_one(fixture.db.pool()).await.unwrap();assert_eq!(remaining,0,"mixed/transitive/history/foreign derivatives survived");
+        for key in keys {let result=fixture.admin.head(&Path::from(key.clone())).await;if key.starts_with("uploads/"){assert_eq!(result.unwrap().size,0);}else{assert!(result.is_err(),"source payload survived physical purge");}}
+        let mut late_put=fixture.http.put(late["url"].as_str().unwrap()).body("fixture content");for(k,v)in late["headers"].as_object().unwrap(){late_put=late_put.header(k,v.as_str().unwrap());}assert_eq!(late_put.send().await.unwrap().status(),reqwest::StatusCode::PRECONDITION_FAILED);
+        let retained=fixture.app.read_memory(&fixture.actor,independent["memory"].as_str().unwrap().parse().unwrap(),false,None,20).await.unwrap();assert_eq!(retained["revisions"][0]["citations"][0]["available"],false);
+        let intact=fixture.app.asset_revision(&fixture.actor,reference(&b).asset,reference(&b).revision).await.unwrap();assert_eq!(fixture.http.get(intact["url"].as_str().unwrap()).send().await.unwrap().bytes().await.unwrap().as_ref(),b"fixture content");
+        let raw_key:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.receipts WHERE principal=$1 AND idempotency_key='erase-sensitive-label')").bind(Uuid::from(fixture.principal)).fetch_one(fixture.db.pool()).await.unwrap();assert!(!raw_key,"raw caller key retained in audit");
+        let index:Value=fixture.http.get(format!("{}/collections/{}",fixture.typesense,fixture.index)).header("X-TYPESENSE-API-KEY",&fixture.index_key).send().await.unwrap().json().await.unwrap();assert_eq!(index["num_documents"],2);
+        let indexed:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM context.content WHERE workspace=$1 AND published AND embedding_space='test'").bind(Uuid::from(fixture.workspace)).fetch_all(fixture.db.pool()).await.unwrap();assert!(fixture.http.delete(format!("{}/collections/{}/documents/{}",fixture.typesense,fixture.index,indexed[0])).header("X-TYPESENSE-API-KEY",&fixture.index_key).send().await.unwrap().status().is_success());
+        assert_eq!(fixture.app.rebuild_index(&fixture.actor,fixture.workspace,None).await.unwrap()["indexed"],2);
+        sqlx::query("DELETE FROM context.resources WHERE id=$1").bind(Uuid::from(foreign.tenant)).execute(fixture.db.pool()).await.unwrap();fixture.close().await;
     });
 }

@@ -617,7 +617,9 @@ impl Application {
                 return Err(Error::Contract);
             }
         }
-        let current = if current.len() == 1 {
+        let current = if current.is_empty() {
+            json!({"state":"unavailable"})
+        } else if current.len() == 1 {
             json!({"state":"current","revision":current[0]})
         } else {
             json!({"state":"conflicted","revisions":current})

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add restart-safe cross-owner transitive physical purge, current-view/source fences,
+  writer settlement, payload/index/staging/history cleanup, citation invalidation,
+  content-free audits and explicit index repair. Hash caller receipt keys.
+- Implement the approved standard conditional-PUT upload fence, verify paused late
+  commits cannot restore payload, and reject versioned S3 buckets. Retain only opaque
+  zero-byte upload fences, not payloads; verify actual purge/restart/index behavior.
+
 - Add immutable semantic memory with natural subjects, typed values, explicit
   provenance, optimistic versions, equivalent/complementary reconciliation and
   preserved conflicts. Keep author precedence/supersession host-authorized.

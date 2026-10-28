@@ -6,6 +6,7 @@ pub mod media;
 pub mod memories;
 mod operations;
 mod plane;
+pub mod purging;
 pub mod retrieval;
 pub mod sharing;
 pub mod synthesis;
@@ -167,6 +168,7 @@ impl Application {
             workflows,
             plane,
         };
+        application.register_indexes().await?;
         application.clear_acquisitions(true).await?;
         Ok(application)
     }
@@ -208,7 +210,7 @@ impl Application {
         .fetch_one(&mut **tx.transaction())
         .await
         .map_err(context_storage::Error::from)?;
-        let result = json!({
+        let mut result = json!({
             "id":row.try_get::<Uuid,_>("id").map_err(context_storage::Error::from)?,
             "kind":row.try_get::<String,_>("kind").map_err(context_storage::Error::from)?,
             "owner":row.try_get::<Uuid,_>("owner").map_err(context_storage::Error::from)?,
@@ -216,6 +218,24 @@ impl Application {
             "label":row.try_get::<String,_>("label").map_err(context_storage::Error::from)?,
             "acl_version":row.try_get::<i64,_>("acl_version").map_err(context_storage::Error::from)?,
         });
+        if let Resource::Asset(asset) = target {
+            let state =
+                sqlx::query("SELECT generation,current_revision FROM context.assets WHERE id=$1")
+                    .bind(Uuid::from(asset))
+                    .fetch_one(&mut **tx.transaction())
+                    .await
+                    .map_err(context_storage::Error::from)?;
+            result["generation"] = json!(
+                state
+                    .try_get::<i64, _>("generation")
+                    .map_err(context_storage::Error::from)?
+            );
+            result["current_revision"] = json!(
+                state
+                    .try_get::<Option<Uuid>, _>("current_revision")
+                    .map_err(context_storage::Error::from)?
+            );
+        }
         tx.commit().await?;
         Ok(result)
     }

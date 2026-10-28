@@ -110,7 +110,7 @@ impl Application {
             &json!({}),
         )
         .await?;
-        if resuming &&let Some(child)=sqlx::query("SELECT u.receipt AS upload,f.request_digest,f.receipt FROM context.receipts u JOIN context.receipts f ON f.principal=u.principal WHERE u.principal=$1 AND u.operation='create_upload' AND u.idempotency_key=$2 AND f.operation='finalize_upload' AND f.idempotency_key=$3")
+        if resuming &&let Some(child)=sqlx::query("SELECT u.receipt AS upload,f.request_digest,f.receipt FROM context.receipts u JOIN context.receipts f ON f.principal=u.principal WHERE u.principal=$1 AND u.operation='create_upload' AND u.idempotency_key=encode(sha256(convert_to($2,'UTF8')),'hex') AND f.operation='finalize_upload' AND f.idempotency_key=encode(sha256(convert_to($3,'UTF8')),'hex')")
             .bind(Uuid::from(actor.principal)).bind(format!("{}:upload",args.idempotency_key)).bind(format!("{}:finalize",args.idempotency_key))
             .fetch_optional(&mut **auth.transaction()).await.map_err(context_storage::Error::from)? {
                 let uploaded:Value=child.try_get("upload").map_err(context_storage::Error::from)?;
@@ -226,7 +226,8 @@ impl Application {
                 let http=reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).timeout(Duration::from_secs(120)).build().map_err(context_storage::Error::from)?;
                 let mut upload=http.put(transfer["url"].as_str().ok_or(Error::Contract)?).body(reqwest::Body::wrap_stream(tokio_util::io::ReaderStream::new(input)));
                 for (key,value) in transfer["headers"].as_object().ok_or(Error::Contract)? {upload=upload.header(key,value.as_str().ok_or(Error::Contract)?);}
-                upload.send().await.map_err(context_storage::Error::from)?.error_for_status().map_err(context_storage::Error::from)?;
+                let response=upload.send().await.map_err(context_storage::Error::from)?;
+                if response.status()!=reqwest::StatusCode::PRECONDITION_FAILED {response.error_for_status().map_err(context_storage::Error::from)?;}
             }
             let receipt=self.finalize_upload(actor,transfer["upload"].as_str().ok_or(Error::Contract)?.parse().map_err(|_|Error::Contract)?,&format!("{}:finalize",args.idempotency_key)).await?;
             let mut auth=self.database.authorized_write(actor,Resource::Collection(args.collection),Permission::Ingest).await?;

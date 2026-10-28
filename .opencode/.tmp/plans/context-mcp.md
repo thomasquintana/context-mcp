@@ -77,6 +77,11 @@
   admission replay; recover missing handles, cancel/settle normal runs, then permit
   only configured cleanup bindings. Restore fencing before starting the HTLK engine.
   No new HTLK interface, private-store access, adapter or sibling change.
+- Approved signed-upload purge fence: standard S3 If-None-Match conditional PUT
+  headers plus permanent zero-byte opaque upload-key fences. A pre-expiry in-flight
+  PUT must not recreate payload after deletion. Payloads are erased; only content-free
+  operational fence objects remain. Keep direct-to-S3 uploads. Verify actual MinIO
+  conditional completion and reject versioned buckets that could retain payload history.
 - User accepted the reference sandbox's reported destroy success despite observed
   surviving containers. Use saved IDs and existing HTLK destroy calls; provider
   container lifetime is the provider's responsibility. Preserve the bug evidence.
@@ -153,13 +158,13 @@
 - Verify actual database/storage interactions and tenant boundary cases.
 - Update plan and commit independently verified sub-tasks as appropriate.
 
-### T4 — Multimodal processing and context services [in progress]
+### T4 — Multimodal processing and context services [completed]
 
 - T4a Full-format operator roles, exact-URL ingestion and combined live-provider
   application verification [completed].
 - T4b Retrieval/context budgets/navigation [completed].
 - T4c Revisioned memory/reconciliation and cited synthesis [completed].
-- T4d Transitive physical purge and index rebuild/recovery [in progress].
+- T4d Transitive physical purge and index rebuild/recovery [completed].
 - Implement complete agreed-format workflows through replaceable graph bindings.
 - Implement chunking/enrichment/indexing, hybrid retrieval, context budgets,
   navigation/entities and page/region/clip extraction.
@@ -170,7 +175,7 @@
 - Verify independent values, access boundaries, failure and concurrency cases.
 - Update plan and commit independently verified sub-tasks as appropriate.
 
-### T5 — Delivery and full verification [pending]
+### T5 — Delivery and full verification [in progress]
 
 - Compose (including local Keycloak), pinned processing image/profiles, container
   deployment, CLI, operator/user docs, HTLK catalogs and runnable examples.
@@ -449,10 +454,20 @@ physical derivative write windows. Twelve nonpaid application tests,21 normal te
 strict fmt/Clippy/rustdoc pass; source revocation hides dependent memory/summaries while
 independent citation-only assertions survive with unavailable support. Pure model
 fixtures are not live reasoning evidence; final combined model checks remain T5.
-Current task: T4d. Implement durable permanent-purge worklists, immediate read/admission
-closure, transitive mixed-source/history deletion across owners, source-derived jobs/
-requests fencing/settlement, write-capability expiry, physical S3/index/staging cleanup,
-content-free audit, orphan cleanup and authorized index rebuilding. Then delivery
+T4d complete: durable cross-owner transitive purge worklists, visibility/admission/
+publication fences, job/request settlement, physical S3/index/staging/history deletion,
+independent citation invalidation, retained index bindings, orphan cleanup and explicit
+repair. User approved conditional signed-PUT/zero-byte opaque fences; actual paused
+MinIO PUT cannot restore bytes. Versioned buckets rejected. Raw caller receipt keys
+are migrated/retained as hashes. Purge/restart test erases mixed/history/foreign
+derivatives, keeps unrelated evidence/citation-only claims and repairs an index.
+13 nonpaid application tests,9 storage tests,21 regular tests, strict checks and actual
+HTTP/stdio binary tests pass. No external-project changes; accepted provider/history
+and receipt-retention boundaries remain explicit in permanent-purge.md.
+Current task: T5. Finish user/agent CLI and content-resource surfaces, deployable
+Compose/images/Keycloak/operator configuration, CI/license/notices/coverage/package/
+release gates, comprehensive both-transport application tests and final combined live
+provider reasoning/media/publication/retrieval/purge evidence. Then final review,
 gates in T5, final plan cleanup and push in T6. Continue through every remaining task.
 Do not expose unimplemented tools or placeholder successes. Preserve exact source
 dependencies, generation fences and the recorded cleanup/receipt-retention boundaries.

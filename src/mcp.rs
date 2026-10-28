@@ -139,6 +139,18 @@ struct MemoryReadArguments {
     before: Option<i64>,
     limit: Option<usize>,
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PurgeStatusArguments {
+    purge: uuid::Uuid,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RebuildArguments {
+    workspace: WorkspaceId,
+    space: Option<String>,
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct JobControlArguments {
@@ -334,6 +346,27 @@ impl ServerHandler for McpServer {
                     })?;
                 self.application.synthesize(&actor, args).await
             }
+            "context_purge" => {
+                let args: context_engine::purging::Purge = serde_json::from_value(arguments)
+                    .map_err(|_| {
+                        ErrorData::invalid_params("invalid permanent purge arguments", None)
+                    })?;
+                self.application.purge(&actor, args).await
+            }
+            "context_purge_status" => {
+                let args: PurgeStatusArguments =
+                    serde_json::from_value(arguments).map_err(|_| {
+                        ErrorData::invalid_params("invalid purge status arguments", None)
+                    })?;
+                self.application.purge_status(&actor, args.purge).await
+            }
+            "context_rebuild_index" => {
+                let args: RebuildArguments = serde_json::from_value(arguments)
+                    .map_err(|_| ErrorData::invalid_params("invalid rebuild arguments", None))?;
+                self.application
+                    .rebuild_index(&actor, args.workspace, args.space)
+                    .await
+            }
             "context_cancel_job" | "context_retry_job" => {
                 let args: JobControlArguments =
                     serde_json::from_value(arguments).map_err(|_| {
@@ -395,6 +428,24 @@ pub fn tools() -> Vec<Tool> {
     let source = json!({"type":"object","required":["asset","revision","location","available"],"properties":{"asset":id,"revision":id,"location":{"type":"object"},"available":{"type":"boolean"}},"additionalProperties":false});
     let memory = json!({"type":"object","required":["workspace","subject","description","value","expected_version","idempotency_key"],"properties":{"workspace":id,"memory":id,"subject":{"type":"string","minLength":1,"maxLength":512},"description":{"type":"string","maxLength":8192},"value":{"type":"object","required":["kind"],"properties":{"kind":{"enum":["text","typed"]},"statement":{"type":"string","maxLength":32768},"value_type":{"type":"string","maxLength":128},"value":{}},"additionalProperties":false},"expected_version":{"type":"integer","minimum":0},"derived_from":{"type":"array","maxItems":64,"items":source},"citations":{"type":"array","maxItems":64,"items":source},"derived_content":{"type":"array","maxItems":64,"items":id},"supersedes":{"type":"array","maxItems":64,"items":id},"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false});
     let descriptors = [
+        (
+            "context_purge",
+            "Irreversibly purge an owned hierarchy, asset/revision, memory or managed record plus all transitive derivations across owners/history. Admission closes reads immediately; completion requires settled writers and physical cleanup. HTLK execution history is outside scope.",
+            json!({"type":"object","required":["target","idempotency_key"],"properties":{"target":{"type":"object","required":["kind","id"],"properties":{"kind":{"enum":["tenant","workspace","collection","asset","revision","content","memory"]},"id":id},"additionalProperties":false},"expected_generation":{"type":"integer","minimum":1},"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false}),
+            false,
+        ),
+        (
+            "context_purge_status",
+            "Read a creator-owned durable purge receipt, including after the target has been physically removed.",
+            json!({"type":"object","required":["purge"],"properties":{"purge":id},"additionalProperties":false}),
+            true,
+        ),
+        (
+            "context_rebuild_index",
+            "Explicitly repair a workspace derived index from existing published authoritative records. Requires owner Share and all source read permissions; does not regenerate knowledge.",
+            json!({"type":"object","required":["workspace"],"properties":{"workspace":id,"space":{"type":"string"}},"additionalProperties":false}),
+            false,
+        ),
         (
             "context_write_memory",
             "Write a subject/description/typed value or statement as an immutable semantic memory revision. Expected version zero creates; conflicts remain explicit unless authorized supersession or configured authority resolves them.",
@@ -534,7 +585,7 @@ pub fn tools() -> Vec<Tool> {
             .with_annotations(
                 ToolAnnotations::new()
                     .read_only(read)
-                    .destructive(name == "context_cancel_job")
+                    .destructive(matches!(name, "context_cancel_job" | "context_purge"))
                     .idempotent(true)
                     .open_world(name == "context_ingest_url"),
             )

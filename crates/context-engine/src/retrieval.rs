@@ -58,13 +58,14 @@ impl Application {
         view: &mut AuthorizedTransaction<'_>,
         id: ContentId,
     ) -> Result<Protected> {
-        let row = sqlx::query("SELECT * FROM context.content WHERE id=$1 AND published")
-            .bind(Uuid::from(id))
-            .fetch_optional(&mut **view.transaction())
-            .await
-            .map_err(context_storage::Error::from)?
-            .ok_or(context_storage::Error::Unavailable)?;
-        let dependencies=sqlx::query("WITH RECURSIVE upstream(id) AS (SELECT $1::uuid UNION SELECT d.source FROM context.dependencies d JOIN upstream u ON d.dependent=u.id WHERE d.relationship='derivation') SELECT c.id,c.asset,c.workspace,c.published FROM upstream u JOIN context.content c ON c.id=u.id")
+        let row =
+            sqlx::query("SELECT * FROM context.content WHERE id=$1 AND published AND NOT purging")
+                .bind(Uuid::from(id))
+                .fetch_optional(&mut **view.transaction())
+                .await
+                .map_err(context_storage::Error::from)?
+                .ok_or(context_storage::Error::Unavailable)?;
+        let dependencies=sqlx::query("WITH RECURSIVE upstream(id) AS (SELECT $1::uuid UNION SELECT d.source FROM context.dependencies d JOIN upstream u ON d.dependent=u.id WHERE d.relationship='derivation') SELECT c.id,c.asset,c.workspace,(c.published AND NOT c.purging) AS published FROM upstream u JOIN context.content c ON c.id=u.id LIMIT 10001")
             .bind(Uuid::from(id)).fetch_all(&mut **view.transaction()).await.map_err(context_storage::Error::from)?;
         if dependencies.len() > 10000 {
             return Err(Error::Busy);
@@ -101,7 +102,7 @@ impl Application {
                     let reference: SourceReference =
                         serde_json::from_value(source.clone()).map_err(|_| Error::Contract)?;
                     let exists: bool = sqlx::query_scalar(
-                        "SELECT EXISTS(SELECT 1 FROM context.revisions WHERE id=$1 AND asset=$2)",
+                        "SELECT EXISTS(SELECT 1 FROM context.revisions v JOIN context.content c ON c.id=v.content WHERE v.id=$1 AND v.asset=$2 AND c.published AND NOT c.purging)",
                     )
                     .bind(Uuid::from(reference.revision))
                     .bind(Uuid::from(reference.asset))
@@ -509,7 +510,7 @@ impl Application {
             .database
             .authorized_read(actor, Resource::Asset(asset))
             .await?;
-        let rows=sqlx::query("SELECT v.id,v.media_type,v.size_bytes,a.current_revision FROM context.revisions v JOIN context.content c ON c.id=v.content JOIN context.assets a ON a.id=v.asset WHERE v.asset=$1 AND c.published AND ($2::uuid IS NULL OR v.id<$2) ORDER BY v.id DESC LIMIT $3")
+        let rows=sqlx::query("SELECT v.id,v.media_type,v.size_bytes,a.current_revision FROM context.revisions v JOIN context.content c ON c.id=v.content JOIN context.assets a ON a.id=v.asset WHERE v.asset=$1 AND c.published AND NOT c.purging AND ($2::uuid IS NULL OR v.id<$2) ORDER BY v.id DESC LIMIT $3")
             .bind(Uuid::from(asset)).bind(before.map(Uuid::from)).bind((limit+1) as i64).fetch_all(&mut **view.transaction()).await.map_err(context_storage::Error::from)?;
         let mut revisions = Vec::new();
         for row in rows.iter().take(limit) {

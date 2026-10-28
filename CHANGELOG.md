@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Deliver HTLK-owned user/agent call/upload CLI, operator provisioning/discovery/
+  identity/membership/credential controls, authenticated content-resource templates,
+  bounded HTTP concurrency and public/private S3 signing endpoints.
+- Deliver pinned-source/provider container recipes, Compose/Keycloak setup, strict
+  CI, measured per-crate coverage gates, dependency/license/advisory/source policy,
+  generated notices and deterministic source release validation. Verify a fresh
+  actual-service stack and full paid HTTP/stdio container/provider journey.
+
 - Add restart-safe cross-owner transitive physical purge, current-view/source fences,
   writer settlement, payload/index/staging/history cleanup, citation invalidation,
   content-free audits and explicit index repair. Hash caller receipt keys.

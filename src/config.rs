@@ -8,6 +8,9 @@ use std::{net::SocketAddr, path::Path};
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Maximum concurrently executing HTTP requests (including authentication).
+    #[serde(default = "default_concurrency")]
+    pub max_concurrent_requests: usize,
     /// Core application, authority and workflow configuration.
     pub application: ApplicationConfig,
     /// Local HTTP listen address.
@@ -29,6 +32,9 @@ pub struct Config {
 
 fn default_timeout() -> u64 {
     180_000
+}
+fn default_concurrency() -> usize {
+    128
 }
 
 impl Config {
@@ -58,6 +64,7 @@ impl Config {
             || config.allowed_hosts.is_empty()
             || !(16_384..=4 * 1024 * 1024).contains(&config.max_request_bytes)
             || !(1000..=600_000).contains(&config.request_timeout_ms)
+            || !(1..=1024).contains(&config.max_concurrent_requests)
         {
             return Err("invalid server configuration".into());
         }

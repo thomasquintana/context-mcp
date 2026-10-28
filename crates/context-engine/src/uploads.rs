@@ -399,6 +399,23 @@ impl Application {
     }
 
     async fn upload_transfer(&self, actor: &Authentication, upload: Uuid) -> Result<Value> {
+        self.upload_transfer_endpoint(actor, upload, true).await
+    }
+
+    pub(crate) async fn upload_for_application(
+        &self,
+        actor: &Authentication,
+        upload: Uuid,
+    ) -> Result<Value> {
+        self.upload_transfer_endpoint(actor, upload, false).await
+    }
+
+    async fn upload_transfer_endpoint(
+        &self,
+        actor: &Authentication,
+        upload: Uuid,
+        public: bool,
+    ) -> Result<Value> {
         let plane = self.data_plane()?;
         let row=sqlx::query("SELECT u.*,floor(greatest(0,extract(epoch FROM(u.expires_at-now()))))::bigint AS seconds_left FROM context.uploads u JOIN context.revisions v ON v.id=u.revision JOIN context.content c ON c.id=v.content WHERE u.id=$1 AND u.principal=$2 AND NOT c.purging")
             .bind(upload).bind(Uuid::from(actor.principal)).fetch_optional(self.database.pool()).await.map_err(context_storage::Error::from)?.ok_or(context_storage::Error::Unavailable)?;
@@ -437,15 +454,27 @@ impl Application {
             .try_get("object_key")
             .map_err(context_storage::Error::from)?;
         // Reissue only within the original capability window; never extend admission expiry.
-        let (url, headers) = plane
-            .blobs
-            .bounded_upload_url(
-                &key,
-                size as u64,
-                &hash,
-                Duration::from_secs(seconds as u64),
-            )
-            .await?;
+        let (url, headers) = if public {
+            plane
+                .blobs
+                .bounded_upload_url(
+                    &key,
+                    size as u64,
+                    &hash,
+                    Duration::from_secs(seconds as u64),
+                )
+                .await?
+        } else {
+            plane
+                .blobs
+                .internal_upload_url(
+                    &key,
+                    size as u64,
+                    &hash,
+                    Duration::from_secs(seconds as u64),
+                )
+                .await?
+        };
         permission.commit().await?;
         Ok(
             json!({"upload":upload,"asset":asset,"revision":row.try_get::<Uuid,_>("revision").map_err(context_storage::Error::from)?,

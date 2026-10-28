@@ -209,4 +209,6 @@ Recovery graph:
   transports. Unit/local-fixture tests cannot replace those gates.
 
 The provider-integration spike is complete at this scope. Full application ingestion,
-publication, retrieval and managed-content purge remain subsequent acceptance gates.
+publication, retrieval and managed-content purge were subsequent acceptance gates at
+this spike checkpoint. Their completed application/container evidence is now recorded
+in verification.md; this report preserves the independent original provider results.

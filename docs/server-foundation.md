@@ -3,8 +3,9 @@
 The actual `context-mcp` binary serves authenticated MCP over Streamable HTTP and
 stdio. Foundation tools are `context_identity`, `context_resource` and
 `context_create_collection`. Upload/text-ingestion and job tools are documented in
-[ingestion.md](ingestion.md). Full-format processing roles, retrieval, memory,
-synthesis and content resources remain subsequent milestones.
+[ingestion.md](ingestion.md). Processing, context maps/navigation, memories/synthesis,
+purge and resource/CLI surfaces are implemented; see deployment.md and verification.md
+for the completed service, measured evidence and release boundaries.
 
 ## Operator setup
 

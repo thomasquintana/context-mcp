@@ -248,7 +248,8 @@ async fn serve_http(
             let application=jobs.clone();async move{application_response(application.job_status(&actor,id).await)}
         }))
         .layer(axum::extract::DefaultBodyLimit::max(config.max_request_bytes))
-        .route_layer(middleware::from_fn_with_state(state, authenticate));
+        .route_layer(middleware::from_fn_with_state(state, authenticate))
+        .layer(tower::limit::ConcurrencyLimitLayer::new(config.max_concurrent_requests));
     let issuer = config
         .application
         .oidc

@@ -159,6 +159,99 @@ struct JobControlArguments {
 }
 
 impl ServerHandler for McpServer {
+    async fn list_resources(
+        &self,
+        _: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        self.actor(&context).await?;
+        Ok(ListResourcesResult::default())
+    }
+    async fn list_resource_templates(
+        &self,
+        _: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListResourceTemplatesResult, ErrorData> {
+        self.actor(&context).await?;
+        Ok(ListResourceTemplatesResult::with_all_items(
+            resource_templates(),
+        ))
+    }
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResponse, ErrorData> {
+        let actor = self.actor(&context).await?;
+        let url = url::Url::parse(&request.uri)
+            .map_err(|_| ErrorData::invalid_params("invalid context resource URI", None))?;
+        if url.scheme() != "context"
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+            || url.port().is_some()
+        {
+            return Err(ErrorData::invalid_params(
+                "invalid context resource URI",
+                None,
+            ));
+        }
+        let parts = url
+            .path()
+            .trim_start_matches('/')
+            .split('/')
+            .collect::<Vec<_>>();
+        let value = match (url.host_str(), parts.as_slice()) {
+            (Some("content"), [id]) => {
+                let content = id
+                    .parse()
+                    .map_err(|_| ErrorData::invalid_params("invalid content ID", None))?;
+                self.application
+                    .expand(&actor, context_core::context::Pointer::Content { content })
+                    .await
+            }
+            (Some("asset"), [asset, "revision", revision]) => {
+                let asset = asset
+                    .parse()
+                    .map_err(|_| ErrorData::invalid_params("invalid asset ID", None))?;
+                let revision = revision
+                    .parse()
+                    .map_err(|_| ErrorData::invalid_params("invalid revision ID", None))?;
+                self.application
+                    .asset_revision(&actor, asset, revision)
+                    .await
+            }
+            (Some("memory"), [id]) => {
+                let memory = id
+                    .parse()
+                    .map_err(|_| ErrorData::invalid_params("invalid memory ID", None))?;
+                self.application
+                    .read_memory(&actor, memory, false, None, 20)
+                    .await
+            }
+            _ => {
+                return Err(ErrorData::invalid_params(
+                    "unknown context resource URI",
+                    None,
+                ));
+            }
+        }
+        .map_err(|_| ErrorData::invalid_request("resource is unavailable", None))?;
+        let text = serde_json::to_string(&value)
+            .map_err(|_| ErrorData::internal_error("resource encoding failed", None))?;
+        if text.len() > 1024 * 1024 {
+            return Err(ErrorData::internal_error(
+                "resource exceeds response bound",
+                None,
+            ));
+        }
+        let mut result = ReadResourceResult::new(vec![
+            ResourceContents::text(text, request.uri).with_mime_type("application/json"),
+        ]);
+        result.result_type = None;
+        Ok(result.into())
+    }
     fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
         Cow::Owned(vec![ProtocolVersion::V_2025_11_25])
     }
@@ -414,12 +507,32 @@ impl ServerHandler for McpServer {
 
 /// Stable server identity and supported capability contract.
 pub fn server_info() -> ServerConfig {
-    ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-        .with_server_info(Implementation::new(
-            "context-mcp",
-            env!("CARGO_PKG_VERSION"),
-        ))
-        .with_protocol_version(ProtocolVersion::V_2025_11_25)
+    ServerConfig::new(
+        ServerCapabilities::builder()
+            .enable_tools()
+            .enable_resources()
+            .build(),
+    )
+    .with_server_info(Implementation::new(
+        "context-mcp",
+        env!("CARGO_PKG_VERSION"),
+    ))
+    .with_protocol_version(ProtocolVersion::V_2025_11_25)
+}
+
+/// Stable templates expose identities only; reading always reauthorizes current sources.
+pub fn resource_templates() -> Vec<ResourceTemplate> {
+    vec![
+        ResourceTemplate::new("context://content/{id}", "context_content")
+            .with_mime_type("application/json"),
+        ResourceTemplate::new(
+            "context://asset/{asset}/revision/{revision}",
+            "context_asset_revision",
+        )
+        .with_mime_type("application/json"),
+        ResourceTemplate::new("context://memory/{id}", "context_memory")
+            .with_mime_type("application/json"),
+    ]
 }
 
 /// Exact descriptors for currently implemented application operations.
@@ -597,7 +710,7 @@ pub fn tools() -> Vec<Tool> {
 pub fn catalog(transport: &str) -> Value {
     json!({
         "tools":{"catalog_version":"0.1","mcp_protocol_version":"2025-11-25","servers":{"context":{"deployment_id":"context-mcp","transport":transport,"implementation_name":"context-mcp","implementation_version":env!("CARGO_PKG_VERSION")}},"schema_documents":{},"tools":tools().into_iter().map(|descriptor|json!({"server":"context","descriptor":descriptor})).collect::<Vec<_>>()},
-        "resources":{"catalog_version":"0.1","mcp_protocol_version":"2025-11-25","servers":{},"schema_documents":{},"resources":[],"templates":[]},
+        "resources":{"catalog_version":"0.1","mcp_protocol_version":"2025-11-25","servers":{"context":{"deployment_id":"context-mcp","transport":transport,"implementation_name":"context-mcp","implementation_version":env!("CARGO_PKG_VERSION")}},"schema_documents":{},"resources":[],"templates":resource_templates().into_iter().map(|descriptor|json!({"server":"context","descriptor":descriptor})).collect::<Vec<_>>()},
         "prompts":{"catalog_version":"0.1","mcp_protocol_version":"2025-11-25","servers":{},"schema_documents":{},"prompts":[]},
     })
 }

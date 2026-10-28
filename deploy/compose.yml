@@ -1,0 +1,73 @@
+name: context-mcp
+services:
+  postgres:
+    image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+    environment:
+      POSTGRES_USER: context
+      POSTGRES_PASSWORD: ${CONTEXT_POSTGRES_PASSWORD:?set CONTEXT_POSTGRES_PASSWORD}
+      POSTGRES_DB: context
+    ports: ["127.0.0.1:${CONTEXT_POSTGRES_PORT:-55432}:5432"]
+    volumes: ["postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U context -d context"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  minio:
+    image: context-mcp-minio:2025-10-15
+    build:
+      context: ..
+      dockerfile: deploy/minio/Dockerfile
+    environment:
+      MINIO_ROOT_USER: ${CONTEXT_S3_ACCESS_KEY:?set CONTEXT_S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${CONTEXT_S3_SECRET_KEY:?set CONTEXT_S3_SECRET_KEY}
+    ports: ["127.0.0.1:${CONTEXT_S3_PORT:-59000}:9000", "127.0.0.1:${CONTEXT_S3_CONSOLE_PORT:-59001}:9001"]
+    volumes: ["objects:/data"]
+    user: "0:0"
+  typesense:
+    image: typesense/typesense:29.1@sha256:2d9a7e348ce0de03a6061291023c54f83c47f0fa81f26b1b0d1110286e415b0c
+    command: ["--data-dir", "/data"]
+    environment:
+      TYPESENSE_API_KEY: ${CONTEXT_TYPESENSE_KEY:?set CONTEXT_TYPESENSE_KEY}
+    ports: ["127.0.0.1:${CONTEXT_TYPESENSE_PORT:-58108}:8108"]
+    volumes: ["indexes:/data"]
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1@sha256:79c623a22abacf3fe6c00a5fb30f5b7843d717b234033b80995891c06116d244
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${CONTEXT_KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${CONTEXT_KEYCLOAK_PASSWORD:?set CONTEXT_KEYCLOAK_PASSWORD}
+    ports: ["127.0.0.1:${CONTEXT_KEYCLOAK_PORT:-58080}:8080"]
+    volumes: ["./keycloak/context-dev-realm.json:/opt/keycloak/data/import/context-dev-realm.json:ro"]
+  application:
+    profiles: ["application"]
+    image: context-mcp:0.1.0
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    user: "${CONTEXT_UID:-1000}:${CONTEXT_GID:-1000}"
+    group_add: ["${DOCKER_GID:-0}"]
+    ports: ["127.0.0.1:${CONTEXT_HTTP_PORT:-8089}:8089"]
+    environment:
+      CONTEXT_DATABASE_URL: ${CONTEXT_CONTAINER_DATABASE_URL:?set CONTEXT_CONTAINER_DATABASE_URL}
+      CONTEXT_S3_ACCESS_KEY: ${CONTEXT_S3_ACCESS_KEY}
+      CONTEXT_S3_SECRET_KEY: ${CONTEXT_S3_SECRET_KEY}
+      CONTEXT_TYPESENSE_KEY: ${CONTEXT_TYPESENSE_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CONTEXT_STDIO_TOKEN: ${CONTEXT_STDIO_TOKEN:-}
+      ALLOW_DIRS: ${CONTEXT_DATA_DIR:?absolute host path required}/staging
+      SANDBOX_PROFILES_DIR: /configuration/profiles
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - "${CONTEXT_DATA_DIR}:${CONTEXT_DATA_DIR}"
+      - "${CONTEXT_DATA_DIR}:/configuration"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio: {condition: service_started}
+      typesense: {condition: service_started}
+    stop_grace_period: 180s
+volumes:
+  postgres:
+  objects:
+  indexes:

@@ -91,4 +91,5 @@ CONTEXT_TEST_SANDBOX_BINARY="$PWD/target/providers/mcp-sandbox" CONTEXT_TEST_MCP
 
 This real test proves that policy/provenance and native dispatch work together.
 It performs no model request or container creation. The prior real model/media
-evidence remains in the integration report; full application E2E is still pending.
+evidence remains in the integration report. Full application/container E2E has since
+passed; see verification.md for the current evidence and exact boundaries.

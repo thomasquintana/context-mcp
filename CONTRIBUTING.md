@@ -14,10 +14,13 @@ cargo test --workspace --all-features --locked
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked
 ```
 
-Use workspace packaging when local packages depend on unpublished versions. Cargo
-must stage all workspace packages together; an isolated package cannot resolve an
-unpublished sibling from crates.io. Release dependency/license policy and generated
-third-party notices are part of the delivery milestone.
+For actual services and per-crate coverage, use tools/test_services.py and
+tools/verify.py as described in docs/verification.md. Paid provider campaigns are
+explicitly opt-in. Keep measured coverage floors/uncovered-line budgets honest; the
+99% goal is not a claim of current coverage. Dependency/source/license checks and
+THIRD_PARTY_NOTICES.md are required delivery gates. The publishable core is rebuilt
+from its Cargo archive; the unpublished application is released as locked source,
+binaries and containers using tools/release.py, not a misleading crates.io package.
 
 ## Dependencies and execution
 

@@ -120,12 +120,13 @@ All roles receive `request: json` and return `result: json` objects as documente
   roles. Local files must be plain private-job basenames, regular files, not symlinks,
   and carry `sha256`. Byte reads are bounded to 2 MiB per segment; text to 256 KiB.
   References are resolved only through `artifact_role`, returning `data_base64`.
-- **Describe/transcribe:** request contains `data_base64`, media type and original
-  location; return `{ "text": "..." }`.
+- **Describe/transcribe:** image requests contain a standard `data_url`; audio
+  requests contain `data_base64`. Both carry media type and original location;
+  return `{ "text": "..." }`.
 - **Enrich:** request contains a bounded source excerpt, name and media type. Return
   a tagged document with `summary`, `entities` (`name`/`entity_type`), and optional
   `relationships` (`from`/`to`/`relationship`). These are staged source metadata;
-  independent entity navigation is a subsequent milestone.
+  generated entity/relationship records retain source protection for navigation.
 - **Embed:** request contains `text`; return `{ "space": "document-v1",
   "embedding": [...] }`, with exactly the configured finite, nonzero vector dimension.
 - **Cleanup:** request contains `job` and accepted opaque `checkpoint`; return

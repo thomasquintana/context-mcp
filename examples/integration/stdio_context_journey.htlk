@@ -1,0 +1,74 @@
+ir_version = "0.1"
+graph acceptance.stdio_context {
+    inputs = { request = json }
+    outputs = { result = json }
+    nodes {
+        arguments = eval(json, {collection = inputs.request.collection,name = "stdio-evidence.txt",text = "The ocean is blue.",idempotency_key = "stdio-live-source"}) {inputs = {request = json}}
+        ingest = call(mcp.tool("context","context_ingest_text"))
+        poll = loop {
+            inputs = {receipt = json}
+            outputs = {progress = json}
+            carried = {receipt = inputs.receipt}
+            body {
+                nodes {
+                    arguments = eval(json, {job = inputs.receipt.job}) {inputs = {receipt = json}}
+                    inspect = call(mcp.tool("context","context_job_status"))
+                }
+                edges {
+                    edge receipt {from = carried.receipt to = arguments.inputs.receipt}
+                    edge arguments {from = arguments.outputs.value to = inspect.inputs.arguments}
+                    edge progress {from = inspect.outputs.value to = outputs.progress}
+                    edge feedback {from = carried.receipt to = next.receipt}
+                }
+            }
+            until = outputs.progress.state == "succeeded" or outputs.progress.state == "failed" or outputs.progress.state == "cancelled"
+            max_iterations = 200
+        }
+        query_arguments = eval(json, {scope = {kind = "workspace",id = inputs.request.workspace},query = "ocean blue",token_budget = 128}) {inputs = {request = json,progress = json}}
+        query = call(mcp.tool("context","context_query"))
+        resource_arguments = eval(json, {resource = {kind = "asset",id = inputs.progress.asset}}) {inputs = {progress = json}}
+        resource = call(mcp.tool("context","context_resource"))
+        purge_arguments = eval(json, {target = {kind = "asset",id = inputs.resource.id},expected_generation = inputs.resource.generation,idempotency_key = "stdio-live-purge"}) {inputs = {resource = json,queried = json}}
+        purge = call(mcp.tool("context","context_purge"))
+        settle = loop {
+            inputs = {receipt = json}
+            outputs = {progress = json}
+            carried = {receipt = inputs.receipt}
+            body {
+                nodes {
+                    arguments = eval(json, {purge = inputs.receipt.purge}) {inputs = {receipt = json}}
+                    inspect = call(mcp.tool("context","context_purge_status"))
+                }
+                edges {
+                    edge receipt {from = carried.receipt to = arguments.inputs.receipt}
+                    edge arguments {from = arguments.outputs.value to = inspect.inputs.arguments}
+                    edge progress {from = inspect.outputs.value to = outputs.progress}
+                    edge feedback {from = carried.receipt to = next.receipt}
+                }
+            }
+            until = outputs.progress.completed == true
+            max_iterations = 200
+        }
+        result = eval(json, {job = inputs.progress,context = inputs.context,purge = inputs.purge}) {inputs = {progress = json,context = json,purge = json}}
+    }
+    edges {
+        edge request {from = inputs.request to = arguments.inputs.request}
+        edge arguments {from = arguments.outputs.value to = ingest.inputs.arguments}
+        edge receipt {from = ingest.outputs.value to = poll.inputs.receipt}
+        edge query_request {from = inputs.request to = query_arguments.inputs.request}
+        edge progress {from = poll.outputs.progress to = query_arguments.inputs.progress}
+        edge query_arguments {from = query_arguments.outputs.value to = query.inputs.arguments}
+        edge resource_progress {from = poll.outputs.progress to = resource_arguments.inputs.progress}
+        edge resource_arguments {from = resource_arguments.outputs.value to = resource.inputs.arguments}
+        edge resource {from = resource.outputs.value to = purge_arguments.inputs.resource}
+        edge queried {from = query.outputs.value to = purge_arguments.inputs.queried}
+        edge purge_arguments {from = purge_arguments.outputs.value to = purge.inputs.arguments}
+        edge purge_receipt {from = purge.outputs.value to = settle.inputs.receipt}
+        edge result_progress {from = poll.outputs.progress to = result.inputs.progress}
+        edge context {from = query.outputs.value to = result.inputs.context}
+        edge settled {from = settle.outputs.progress to = result.inputs.purge}
+        edge result {from = result.outputs.value to = outputs.result}
+    }
+    postconditions = outputs.result.job.state == "succeeded" and outputs.result.purge.completed == true
+    limits {max_mcp_calls = 410}
+}

@@ -11,8 +11,8 @@ description = "Authorized application services for the context-mcp engine"
 [dependencies]
 context-core.workspace = true
 context-storage.workspace = true
-context-auth = { path = "../context-auth" }
-context-workflows = { path = "../context-workflows" }
+context-auth = { version = "=0.1.0", path = "../context-auth" }
+context-workflows = { version = "=0.1.0", path = "../context-workflows" }
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true

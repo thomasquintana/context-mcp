@@ -74,6 +74,8 @@ pub struct Config {
     pub url_allow_http: bool,
     /// S3-compatible endpoint.
     pub s3_endpoint: String,
+    /// Client-reachable S3 URL endpoint; private endpoint remains internal.
+    pub s3_public_endpoint: Option<String>,
     /// Operator-provisioned bucket.
     pub s3_bucket: String,
     /// Signing region.

@@ -175,7 +175,7 @@
 - Verify independent values, access boundaries, failure and concurrency cases.
 - Update plan and commit independently verified sub-tasks as appropriate.
 
-### T5 — Delivery and full verification [in progress]
+### T5 — Delivery and full verification [completed]
 
 - Compose (including local Keycloak), pinned processing image/profiles, container
   deployment, CLI, operator/user docs, HTLK catalogs and runnable examples.
@@ -188,7 +188,7 @@
   from tests against only fixtures.
 - Update plan and commit.
 
-### T6 — Final cleanup and push [pending]
+### T6 — Final cleanup and push [in progress]
 
 - Review status, complete diff/history, tests, and tracked files for secrets.
 - Ensure every acceptance criterion has evidence and no unresolved blocker remains.
@@ -464,11 +464,32 @@ derivatives, keeps unrelated evidence/citation-only claims and repairs an index.
 13 nonpaid application tests,9 storage tests,21 regular tests, strict checks and actual
 HTTP/stdio binary tests pass. No external-project changes; accepted provider/history
 and receipt-retention boundaries remain explicit in permanent-purge.md.
-Current task: T5. Finish user/agent CLI and content-resource surfaces, deployable
-Compose/images/Keycloak/operator configuration, CI/license/notices/coverage/package/
-release gates, comprehensive both-transport application tests and final combined live
-provider reasoning/media/publication/retrieval/purge evidence. Then final review,
-gates in T5, final plan cleanup and push in T6. Continue through every remaining task.
+T5 complete: HTLK-owned call/streaming-upload CLI, trusted operator provision/discover/
+identity/membership/credential commands, protected content resource templates, bounded
+HTTP concurrency and private/public S3 endpoint signing. Container images pin Rust,
+provider source/archive checksums and unmodified MinIO source; Compose/Keycloak,
+private runtime-config/profile preparation and deployment docs are delivered.
+Fresh Compose verification passed47 Rust tests (21 regular+26 actual-service opt-in),
+fmt/strict Clippy/rustdoc, independent per-crate coverage gates, advisory/license/source/
+bans, generated notices, actionlint, core archive verification, optimized workspace
+builds and deterministic source archive comparison. Coverage is honestly measured;
+the99% longer-term goal is not reached (native helper Docker executions do not inflate
+host counters). See docs/verification.md and tools/coverage-thresholds.json.
+Actual paid Docker journey passed both HTTP and stdio: video native/model processing,
+publication/hybrid retrieval, native clip, actual model contradiction preservation,
+saved cited synthesis and transitive purge. Evidence target/deployment/verified-f_n7k_au;
+app imagec0d69776..., processor707838fe..., actual gpt-4.1/whisper-1/embed-small.
+No sibling/external projects modified. CI source is syntax-validated; GitHub runs only
+after push. Current task: T6. Review intended diff/history/tracked files and secrets,
+remove this temporary plan, move session guidance to permanent architecture/evidence/
+contribution docs, commit cleanup, regenerate final deterministic release archive,
+and push every completed commit to origin/main. User explicitly says do not stop
+until the complete plan and push are finished. Keep approved sandbox receipt/history,
+signed-upload zero-byte operational fence and lost-receipt window boundaries explicit.
+
+Previous milestone commits:9c80500 (uploads),d025325/c170278 (formats/URLs),
+81b3146 (context/navigation),476f68b (memory/synthesis),a0a1d8e (physical purge).
+Continue the final T6 review, cleanup and push without stopping at a milestone.
 Do not expose unimplemented tools or placeholder successes. Preserve exact source
 dependencies, generation fences and the recorded cleanup/receipt-retention boundaries.
 Use the shared production host (not spike fixed policy) and authenticate every

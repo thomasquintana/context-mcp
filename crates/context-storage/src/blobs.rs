@@ -18,6 +18,8 @@ use tokio::io::AsyncWriteExt;
 pub struct BlobConfig {
     /// S3-compatible endpoint URL; no credentials, query or fragment.
     pub endpoint: String,
+    /// Optional client-reachable endpoint used only to sign externally returned URLs.
+    pub public_endpoint: Option<String>,
     /// Existing operator-provisioned bucket.
     pub bucket: String,
     /// Signing region.
@@ -34,6 +36,7 @@ pub struct BlobConfig {
 #[derive(Clone)]
 pub struct Blobs {
     store: AmazonS3,
+    public_store: AmazonS3,
     bucket: String,
     client: reqwest::Client,
 }
@@ -46,6 +49,21 @@ fn managed_path(key: &str) -> Result<Path> {
 }
 
 impl Blobs {
+    /// Explicit trusted-operator provisioning of the configured unversioned bucket.
+    ///
+    /// # Errors
+    /// Rejects inaccessible/conflicting buckets and unverifiable versioning policy.
+    pub async fn provision(&self) -> Result<()> {
+        let url = self
+            .store
+            .signed_url(Method::PUT, &Path::from(""), Duration::from_secs(60))
+            .await?;
+        let response = self.client.put(url).send().await?;
+        if response.status() != reqwest::StatusCode::CONFLICT {
+            response.error_for_status()?;
+        }
+        self.ready().await
+    }
     /// Construct a path-style S3 client with bounded requests and explicit credentials.
     ///
     /// # Errors
@@ -66,11 +84,23 @@ impl Blobs {
             return Err(Error::Invalid);
         }
         let bucket = config.bucket.clone();
+        if let Some(public) = &config.public_endpoint {
+            let url = reqwest::Url::parse(public).map_err(|_| Error::Invalid)?;
+            if url.host_str().is_none()
+                || !url.username().is_empty()
+                || url.password().is_some()
+                || url.query().is_some()
+                || url.fragment().is_some()
+                || !(url.scheme() == "https" || (config.allow_http && url.scheme() == "http"))
+            {
+                return Err(Error::Invalid);
+            }
+        }
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .redirect(reqwest::redirect::Policy::none())
             .build()?;
-        let store = AmazonS3Builder::new()
+        let builder = AmazonS3Builder::new()
             .with_endpoint(config.endpoint)
             .with_bucket_name(config.bucket)
             .with_region(config.region)
@@ -87,10 +117,19 @@ impl Blobs {
             .with_retry(RetryConfig {
                 max_retries: 0,
                 ..RetryConfig::default()
-            })
+            });
+        let public_store = builder
+            .clone()
+            .with_endpoint(
+                config
+                    .public_endpoint
+                    .unwrap_or_else(|| endpoint.to_string()),
+            )
             .build()?;
+        let store = builder.build()?;
         Ok(Self {
             store,
+            public_store,
             bucket,
             client,
         })
@@ -414,6 +453,32 @@ impl Blobs {
         sha256: &[u8; 32],
         lifetime: Duration,
     ) -> Result<(String, std::collections::BTreeMap<String, String>)> {
+        self.bounded_with(&self.public_store, key, size, sha256, lifetime)
+            .await
+    }
+
+    /// Sign an internal transfer against the private endpoint, with identical guards.
+    /// # Errors
+    /// Rejects invalid keys/lifetimes and signing/header failures.
+    pub async fn internal_upload_url(
+        &self,
+        key: &str,
+        size: u64,
+        sha256: &[u8; 32],
+        lifetime: Duration,
+    ) -> Result<(String, std::collections::BTreeMap<String, String>)> {
+        self.bounded_with(&self.store, key, size, sha256, lifetime)
+            .await
+    }
+
+    async fn bounded_with(
+        &self,
+        store: &AmazonS3,
+        key: &str,
+        size: u64,
+        sha256: &[u8; 32],
+        lifetime: Duration,
+    ) -> Result<(String, std::collections::BTreeMap<String, String>)> {
         if lifetime.is_zero() || lifetime > Duration::from_secs(900) {
             return Err(Error::Invalid);
         }
@@ -428,8 +493,7 @@ impl Blobs {
                 HeaderName::from_static("if-none-match"),
                 HeaderValue::from_static("*"),
             );
-        let url = self
-            .store
+        let url = store
             .signed_url_opts(Method::PUT, &managed_path(key)?, lifetime, &options)
             .await?;
         Ok((
@@ -456,7 +520,7 @@ impl Blobs {
             return Err(Error::Invalid);
         }
         Ok(self
-            .store
+            .public_store
             .signed_url(method, &managed_path(key)?, lifetime)
             .await?
             .into())

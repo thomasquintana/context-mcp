@@ -1,0 +1,30 @@
+{
+  "context-core": {
+    "minimum_percent": 90,
+    "maximum_uncovered": 28
+  },
+  "context-storage": {
+    "minimum_percent": 91,
+    "maximum_uncovered": 90
+  },
+  "context-workflows": {
+    "minimum_percent": 82,
+    "maximum_uncovered": 159
+  },
+  "context-auth": {
+    "minimum_percent": 94,
+    "maximum_uncovered": 29
+  },
+  "context-engine": {
+    "minimum_percent": 85,
+    "maximum_uncovered": 751
+  },
+  "context-process": {
+    "minimum_percent": 27,
+    "maximum_uncovered": 543
+  },
+  "context-mcp": {
+    "minimum_percent": 62,
+    "maximum_uncovered": 480
+  }
+}

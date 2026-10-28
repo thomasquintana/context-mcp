@@ -22,6 +22,24 @@ use std::{
 use uuid::Uuid;
 
 struct Process(Child);
+impl Process {
+    async fn terminate(&mut self) {
+        assert!(
+            Command::new("kill")
+                .args(["-TERM", &self.0.id().to_string()])
+                .status()
+                .unwrap()
+                .success()
+        );
+        for _ in 0..500 {
+            if self.0.try_wait().unwrap().is_some() {
+                return;
+            }
+            actix::clock::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("application did not drain during graceful shutdown");
+    }
+}
 impl Drop for Process {
     fn drop(&mut self) {
         let _ = self.0.kill();
@@ -107,6 +125,24 @@ graph acceptance.client_{role} {{
         &dir.join(format!("context-{transport}.json")),
         &context_mcp::mcp::catalog(transport),
     );
+    std::fs::write(dir.join("client-read-resource.htlk"),r#"
+ir_version = "0.1"
+graph acceptance.content_resource {
+    inputs = {request = json}
+    outputs = {result = json}
+    nodes {
+        resource = read(mcp.template("context","context://content/{id}"))
+        result = eval(json, {text = inputs.resource.contents[0].text}) {inputs = {resource = McpResourceResult}}
+    }
+    edges {
+        edge request {from = inputs.request to = resource.inputs.arguments}
+        edge resource {from = resource.outputs.value to = result.inputs.resource}
+        edge result {from = result.outputs.value to = outputs.result}
+    }
+    limits {max_mcp_calls = 1}
+}
+"#).unwrap();
+    roles.insert("read_resource".into(),json!({"source":"client-read-resource.htlk","catalogs":dir.join(format!("context-{transport}.json"))}));
     serde_json::from_value(json!({"database":format!("{name}.sqlite"),"roles":roles,
         "endpoints":{"context-mcp":endpoint},"required_deployments":["context-mcp"],"workers":2,"max_runs":8})).unwrap()
 }
@@ -212,6 +248,8 @@ graph fixture.{role} {{
         host.grant_job(grant.clone()).unwrap();
         let identity=succeeded(call(&host,grant.job,"identity",json!({})).await);
         assert_eq!(identity["principal"],principal.to_string());
+        let cli_args=dir.path().join("identity-arguments.json");write(&cli_args,&json!({}));
+        let cli=Command::new(binary).args(["call","--endpoint",&public,"--token-env","CONTEXT_CLI_TEST_TOKEN","--allow-http","--tool","context_identity","--arguments"]).arg(&cli_args).env("CONTEXT_CLI_TEST_TOKEN",full.secret()).output().unwrap();assert!(cli.status.success(),"actual HTLK CLI call failed");let cli:Value=serde_json::from_slice(&cli.stdout).unwrap();assert_eq!(cli["principal"],principal.to_string());
         let resource=succeeded(call(&host,grant.job,"resource",json!({"resource":{"kind":"workspace","id":initial.workspace}})).await);
         assert_eq!(resource["owner"],initial.tenant.to_string());
         assert!(matches!(call(&host,grant.job,"resource",json!({"resource":{"kind":"workspace","id":foreign.workspace}})).await,State::Failed(_)));
@@ -243,11 +281,13 @@ graph fixture.{role} {{
         let context=succeeded(call(&host,grant.job,"query",json!({"scope":{"kind":"workspace","id":initial.workspace},"query":"transport fixture","token_budget":1})).await);
         assert_eq!(context["evidence"].as_array().unwrap().len(),1);assert!(context["tokens"]["used"].as_u64().unwrap()<=1);
         let expanded=succeeded(call(&host,grant.job,"expand",json!({"pointer":{"kind":"content","content":context["evidence"][0]["id"]}})).await);assert_eq!(expanded["body"]["text"],"transport fixture");
+        let resource=succeeded(call(&host,grant.job,"read_resource",json!({"id":context["evidence"][0]["id"]})).await);let resource:Value=serde_json::from_str(resource["text"].as_str().unwrap()).unwrap();assert_eq!(resource["body"]["text"],"transport fixture");
         assert_eq!(succeeded(call(&host,grant.job,"history",json!({"asset":finalized["asset"]})).await)["revisions"].as_array().unwrap().len(),1);
         let rest:Value=setup.get(format!("{base}/jobs/{}",finalized["job"].as_str().unwrap())).bearer_auth(full.secret())
             .send().await.unwrap().error_for_status().unwrap().json().await.unwrap();
         assert_eq!(rest["state"],"succeeded");
         assert_eq!(setup.get(format!("{base}/jobs/{}",finalized["job"].as_str().unwrap())).send().await.unwrap().status(),reqwest::StatusCode::UNAUTHORIZED);
+        let local_file=dir.path().join("cli-upload.txt");std::fs::write(&local_file,b"transport fixture").unwrap();let uploaded=Command::new(binary).args(["upload","--endpoint",&public,"--token-env","CONTEXT_CLI_TEST_TOKEN","--allow-http","--file"]).arg(&local_file).args(["--collection",&initial.collection.to_string(),"--idempotency-key","cli-upload","--wait"]).env("CONTEXT_CLI_TEST_TOKEN",full.secret()).output().unwrap();assert!(uploaded.status.success(),"actual streaming CLI upload failed");let uploaded:Value=serde_json::from_slice(&uploaded.stdout).unwrap();assert_eq!(uploaded["state"],"succeeded");
         // A persisted cancellation fence precedes engine startup. Missing admission
         // handles can be replayed without invoking a new external mutation.
         let mut fenced=grant.clone();fenced.job=JobId::new();fenced.fenced=true;
@@ -281,7 +321,7 @@ graph fixture.{role} {{
         auth.revoke_service(principal,read.id).await.unwrap();
         assert!(matches!(call(&read_host,grant.job,"identity",json!({})).await,State::Failed(_)));
         read_host.shutdown().await.unwrap();
-        process.0.kill().unwrap();process.0.wait().unwrap();
+        process.terminate().await;
 
         let mut stdio_config=client_config(dir.path(),"client-stdio",json!({"transport":"stdio","program":binary,
             "arguments":["serve","--config",config_path,"--transport","stdio"],

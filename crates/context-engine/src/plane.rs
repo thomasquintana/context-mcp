@@ -56,6 +56,7 @@ impl Plane {
         }
         let blobs = Blobs::new(BlobConfig {
             endpoint: config.s3_endpoint.clone(),
+            public_endpoint: config.s3_public_endpoint.clone(),
             bucket: config.s3_bucket.clone(),
             region: config.s3_region.clone(),
             access_key: std::env::var(&config.s3_access_key_env)

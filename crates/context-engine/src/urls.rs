@@ -220,7 +220,8 @@ impl Application {
         let admitted=async {
             let (size,sha256)=result?;
             let transfer=self.create_upload(actor,CreateUpload {collection:args.collection,asset:args.asset,name:args.name,media_type:args.media_type,
-                size_bytes:size,sha256,profile:args.profile,idempotency_key:format!("{}:upload",args.idempotency_key)}).await?;
+                 size_bytes:size,sha256,profile:args.profile,idempotency_key:format!("{}:upload",args.idempotency_key)}).await?;
+            let transfer=self.upload_for_application(actor,transfer["upload"].as_str().ok_or(Error::Contract)?.parse().map_err(|_|Error::Contract)?).await?;
             if transfer["finalized"]!=true {
                 let input=tokio::fs::File::open(&file).await.map_err(context_storage::Error::from)?;
                 let http=reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).timeout(Duration::from_secs(120)).build().map_err(context_storage::Error::from)?;

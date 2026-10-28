@@ -55,6 +55,7 @@ async fn s3_signed_transfers_integrity_limits_and_idempotent_purge() {
     );
     let blobs = Blobs::new(BlobConfig {
         endpoint,
+        public_endpoint: None,
         bucket,
         region: "us-east-1".into(),
         access_key: access,

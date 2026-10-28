@@ -3,23 +3,26 @@
 A Rust context engine for agents: multimodal evidence, navigable context maps,
 versioned semantic memory, and cited synthesis. Apache-2.0.
 
-**Implementation status:** domain contracts, backing-service clients, authenticated
-MCP HTTP/stdio services, upload/text/job processing and shared HTLK hosting are
-implemented and tested. The durable ingestion service is verified against actual
-backing services, reference format extraction and actual model/video processing.
-Knowledge services remain under development.
-The integration host has verified unchanged HTLK discovery against both initial
-providers and compiled read-only invocation against the actual sandbox server.
-Native FFmpeg processing, normal sandbox cleanup, and actual OpenAI generation,
-embedding and transcription through HTLK are verified. Sandbox restart recovery
-has a measured provider bug which the user accepts; cleanup uses existing destroy
-calls and provider success receipts.
-See [processing profiles and measured application evidence](docs/processing.md) and the
-[integration evidence](docs/integration-spike.md).
+**Implementation status:** the planned service and delivery surfaces are implemented:
+authenticated HTTP/stdio MCP and CLI, verified uploads/exact URLs, durable multimodal
+processing, hybrid budgeted context maps/navigation, immutable semantic memories,
+authority-bounded reconciliation, cited transient/saved synthesis, live sharing,
+physical transitive purge and index repair. All MCP operations use unchanged public
+HTLK interfaces and replaceable operator graphs/catalogs/bindings.
+
+Actual PostgreSQL/MinIO/Typesense/Keycloak tests, reference-format sandbox checks and
+a full container/provider journey over both transports pass. Coverage is measured
+and ratcheted per crate; the longer-term 99% goal is not yet reached. The accepted
+sandbox provider bug/history boundary and content-free upload fences are explicit.
+See [verification and release evidence](docs/verification.md),
+[processing](docs/processing.md), and [initial integration evidence](docs/integration-spike.md).
 See [the specification](docs/specification.md) and
 [acceptance criteria](docs/acceptance.md) for the target behavior and verification.
 See [server setup and implemented operations](docs/server-foundation.md).
 See [upload/job contracts and recovery evidence](docs/ingestion.md).
+See [context/navigation/sharing](docs/context-services.md),
+[memory/synthesis](docs/memory-and-synthesis.md),
+[permanent purge](docs/permanent-purge.md), and [deployment/CLI](docs/deployment.md).
 
 ## Architecture
 

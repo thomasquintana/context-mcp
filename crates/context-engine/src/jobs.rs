@@ -360,6 +360,16 @@ impl Application {
             permission.commit().await?;return Ok(result);
         }
         let transfer = self.create_upload(actor, upload_args).await?;
+        let transfer = self
+            .upload_for_application(
+                actor,
+                transfer["upload"]
+                    .as_str()
+                    .ok_or(Error::Contract)?
+                    .parse()
+                    .map_err(|_| Error::Contract)?,
+            )
+            .await?;
         if transfer["finalized"] != true {
             let url = transfer["url"].as_str().ok_or(Error::Contract)?;
             let mut request = reqwest::Client::builder()

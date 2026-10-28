@@ -1,0 +1,40 @@
+name: Rust quality and actual-service coverage
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Pinned toolchain and verification tools
+        run: |
+          rustup toolchain install 1.98.0 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview
+          cargo install cargo-llvm-cov --version 0.9.1 --locked
+          cargo install cargo-deny --version 0.20.2 --locked
+          cargo install cargo-about --version 0.9.2 --locked
+      - run: cargo build --workspace --all-features --locked
+      - run: python3 tools/audit_release.py
+      - name: Actual PostgreSQL, MinIO, Typesense, Keycloak and unchanged sandbox
+        run: python3 tools/test_services.py
+      - name: Strict checks and per-crate coverage budgets
+        run: python3 tools/verify.py --coverage
+      - name: Verify locked dependency notices
+        run: python3 tools/notices.py --check
+      - name: Reproducible release build
+        run: python3 tools/release.py
+      - name: Retain measured coverage and release artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: coverage-and-release-${{ github.sha }}
+          path: |
+            target/coverage/coverage.json
+            target/releases/
+          if-no-files-found: warn
+      - name: Cleanup disposable services
+        if: always()
+        run: python3 tools/test_services.py --stop

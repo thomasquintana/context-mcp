@@ -72,6 +72,11 @@
 - HTLK execution history is explicitly outside context-mcp purge scope. Keep minimal
   content-free application purge/audit records. Fence late processing/publication so
   deleted data cannot be recreated.
+- Approved cancellation fence: persist a fenced JobGrant before reconciling failed/
+  cancelled jobs. Existing RuntimePolicy denies normal MCP dispatch during stable-key
+  admission replay; recover missing handles, cancel/settle normal runs, then permit
+  only configured cleanup bindings. Restore fencing before starting the HTLK engine.
+  No new HTLK interface, private-store access, adapter or sibling change.
 - User accepted the reference sandbox's reported destroy success despite observed
   surviving containers. Use saved IDs and existing HTLK destroy calls; provider
   container lifetime is the provider's responsibility. Preserve the bug evidence.
@@ -126,19 +131,19 @@
 - Unit/mock tests are supplementary, not substitutes for the real-provider spike.
 - Update plan and commit successful work, or record an explicit blocker.
 
-### T3 — Service foundation and authoritative persistence [in progress]
+### T3 — Service foundation and authoritative persistence [completed]
 
 - T3a — PostgreSQL schema/repositories and S3/Typesense clients [completed].
   - T3a1 PostgreSQL schema and transactional primitives [completed].
   - T3a2 S3/Typesense clients and live verification [completed].
 - T3b — Shared production HTLK host and role contracts [completed].
-- T3c — Authentication, authorization, transport and durable jobs [in progress].
+- T3c — Authentication, authorization, transport and durable jobs [completed].
   - T3c1 Provider-neutral authentication and transactional ACL decisions [completed].
-  - T3c2 MCP/HTTP/stdio interfaces, uploads and worker recovery [in progress].
+  - T3c2 MCP/HTTP/stdio interfaces, uploads and worker recovery [completed].
     - T3c2a Authenticated transports, operator CLI and resource services [completed].
-    - T3c2b Upload admission, job state and durable processing [in progress].
+    - T3c2b Upload admission, job state and durable processing [completed].
       - T3c2b0 Immutable upload promotion and frozen recovery contracts [completed].
-      - T3c2b1 Data plane, upload/finalize/status/cancel and staged workers [in progress].
+      - T3c2b1 Data plane, upload/finalize/status/cancel and staged workers [completed].
 
 - Implement migrations and PostgreSQL repositories, S3/MinIO and Typesense adapters.
 - Implement configured token issuer/audience validation, stable issuer/subject
@@ -150,6 +155,11 @@
 
 ### T4 — Multimodal processing and context services [pending]
 
+- T4a Full-format operator roles, exact-URL ingestion and combined live-provider
+  application verification [pending; next task].
+- T4b Retrieval/context budgets/navigation [pending].
+- T4c Revisioned memory/reconciliation and cited synthesis [pending].
+- T4d Transitive physical purge and index rebuild/recovery [pending].
 - Implement complete agreed-format workflows through replaceable graph bindings.
 - Implement chunking/enrichment/indexing, hybrid retrieval, context budgets,
   navigation/entities and page/region/clip extraction.
@@ -373,14 +383,53 @@
 - T3c2b0 checks: normal tests17, strict fmt/Clippy/rustdoc passed; real S3 promotion
   assertions passed. Migration0003 adds upload source/profile/generation and job
   detail metadata. Next work must implement actual admission, not placeholder jobs.
+- T3c2b1: implemented the optional managed data plane, tracked signed uploads,
+  immutable finalization/text admission, creator-owned status/cancel/retry, REST
+  upload/status routes and six new MCP tools. Bounded Actix workers persist canonical
+  stage intents, reconcile HTLK handles, validate paged extraction/enrichment/vectors,
+  stage/index chunks and publish atomically behind current authorization/generation.
+  Prior successful revisions survive failed replacement. Operator full-format role
+  definitions, URL ingestion and actual combined provider pipelines remain T4a.
+- Approved cancellation fence implemented with existing RuntimePolicy: persist
+  fenced authority on failure/cancel, restore it before engine launch, replay missing
+  stable admissions with normal dispatch blocked, settle all normal runs, then permit
+  only granted cleanup bindings. Native lifecycle limitation remains accepted; no
+  adapter, private HTLK store access or external-project changes.
+- Cleanup now retains authority/pending state on checkpoint/provider/local deletion
+  errors and revokes only after settlement. Maintenance and workers register the same
+  local job ownership to prevent concurrent settlement. Staged derivatives carry
+  producer_job (migration0006), preventing old-job cleanup from deleting new bodies.
+  Migrations0004/0005 retain temporary stage requests and link finalized upload jobs.
+- Retry rechecks locked terminal/cleanup/publication state, rejects competing active
+  replacements, serializes receipts before capability/capacity checks and counts all
+  unfinished authority (including pending cleanup) against a 4096 maximum. Text child
+  receipts verify their linked upload digest rather than accepting unrelated receipts.
+- HTLK admission/audit retention is30 days; jobs have a7-day processing deadline.
+  Missing-handle replay conservatively rejects jobs29 days old or older, retaining
+  fenced cleanup instead of confusing an expired receipt with a never-admitted run.
+  Saved handles continue to use public inspection. Expiring provider URLs are not
+  promised to remain usable on arbitrary-late recovery; explicit retry renews stages.
+- T3c2b1 final verification: fmt, strict workspace/all-target Clippy, normal workspace
+  tests17 and strict rustdoc pass. Five actual PG/MinIO/Typesense ingestion tests pass:
+  publication/failed replacement, cancel/retry/job-owned cleanup, receipt/restart
+  recovery, admitted/never-admitted missing handles, concurrent retry/capacity,
+  unconfirmed cleanup remaining fenced and expired-receipt replay refusal. Actual
+  root binary HTTP/stdio test passes upload/finalization/text/status and authorization,
+  idempotency, restart fence/cleanup restrictions with zero fenced external mutations.
+  Nine actual storage tests also pass. Processing roles in these application tests
+  are pure fixtures, not new media/model compatibility evidence. No paid calls made.
+- Updated docs/ingestion.md, API/server status, acceptance, README and changelog.
+  Completed task commit subject: Add durable upload jobs and fenced workflow recovery.
 
 ## Resume checkpoint
 
-Current task: T3c2b1. Next: implement
-S3 upload sessions/finalization, immutable source handling, job admission/status/
-cancellation and durable staged workers. Full media roles, retrieval/memory/
-synthesis/purge follow in T4. Do not expose unimplemented tools or placeholder
-successes. Preserve exact source dependencies and generation fences.
+Current task boundary: T3c2b1 complete and verified; commit intended milestone changes.
+Next task: T4a. Implement real operator extraction/enrichment/embed/cleanup roles for
+the agreed format matrix, exact-resource URL admission and combined actual-provider
+application evidence. Existing development.json has only foundation provider roles,
+not a production ingestion profile. Retrieval/memory/synthesis/purge follow in T4b-d.
+Do not expose unimplemented tools or placeholder successes. Preserve exact source
+dependencies, generation fences and the recorded cleanup/receipt-retention boundaries.
 Use the shared production host (not spike fixed policy) and authenticate every
 HTTP/stdio operation. Serializable admission retries are DB-only before effects.
 Provider orphan limitation is accepted; no adaptation needed. Preserve this plan;

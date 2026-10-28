@@ -1,10 +1,10 @@
 # Server foundation and operator commands
 
 The actual `context-mcp` binary serves authenticated MCP over Streamable HTTP and
-stdio. The currently implemented public tools are `context_identity`,
-`context_resource` and `context_create_collection`. Ingestion, jobs, retrieval,
-memory, synthesis and content resources are subsequent milestones; their absence
-from the catalog is intentional implementation status, not a completed-product claim.
+stdio. Foundation tools are `context_identity`, `context_resource` and
+`context_create_collection`. Upload/text-ingestion and job tools are documented in
+[ingestion.md](ingestion.md). Full-format processing roles, retrieval, memory,
+synthesis and content resources remain subsequent milestones.
 
 ## Operator setup
 
@@ -64,11 +64,14 @@ The ignored external-service test launches the actual application binary and cal
 it only through compiled/admitted HTLK role graphs over HTTP and stdio:
 
 ```console
-CONTEXT_TEST_DATABASE_URL=postgres://context:context-test-only@127.0.0.1:55432/context_authority cargo test -p context-mcp --test transports --locked -- --ignored
+# Set the isolated PostgreSQL/MinIO/Typesense fixture variables in ingestion.md.
+cargo test -p context-mcp --test transports --locked -- --ignored
 ```
 
 It verifies identity, protected metadata, another tenant's denial, credential-scope
 intersection, revocation, sequential/concurrent idempotency and one created row per
-key. Its application-role fixtures are pure graphs, not proof of model/media
-processing. Those actual provider checks are recorded separately. It also verifies
-the unauthenticated HTTP challenge and resource metadata. No bearer token is printed.
+key. It also verifies uploads, immutable finalization, text ingestion/publication,
+job status and fenced replay/cleanup dispatch restrictions after host restart. Its
+application-role fixtures are pure graphs, not proof of model/media processing.
+Actual provider checks are recorded separately. It verifies the unauthenticated HTTP
+challenge and resource metadata. No bearer token is printed.

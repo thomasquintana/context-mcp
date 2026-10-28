@@ -1,6 +1,10 @@
 //! Authorized context application services. Transport handlers never own domain authority.
 
 pub mod data;
+pub mod jobs;
+mod plane;
+pub mod uploads;
+mod worker;
 
 use context_auth::{Authenticator, OidcConfig};
 use context_core::{
@@ -36,6 +40,21 @@ pub enum Error {
     /// Workflow admission, policy or execution failed.
     #[error("workflow operation failed")]
     Workflow(#[from] context_workflows::host::Error),
+    /// A required configured processing capability is missing.
+    #[error("required processing capability is unavailable")]
+    MissingCapability,
+    /// A provider result violated its declared application contract.
+    #[error("processing result violated its contract")]
+    Contract,
+    /// Bounded work admission is full.
+    #[error("processing capacity is unavailable")]
+    Busy,
+    /// Explicit caller cancellation won the operation.
+    #[error("operation was cancelled")]
+    Cancelled,
+    /// Application shutdown is preserving work for restart.
+    #[error("application is stopping")]
+    Stopping,
 }
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -58,6 +77,8 @@ pub struct Config {
     pub oidc: Option<OidcConfig>,
     /// Retained operator graphs and deployment bindings.
     pub workflows: WorkflowConfig,
+    /// Optional managed data plane during foundation rollout; ingestion rejects absence.
+    pub data: Option<data::Config>,
 }
 
 /// The one application instance's shared services.
@@ -65,6 +86,7 @@ pub struct Application {
     database: Database,
     authentication: Authenticator,
     workflows: Arc<WorkflowHost>,
+    plane: Option<Arc<plane::Plane>>,
 }
 
 impl Application {
@@ -76,7 +98,10 @@ impl Application {
         let url = std::env::var(&config.database_url_env).map_err(|_| Error::Configuration)?;
         let database = Database::connect(&url, config.database_connections).await?;
         let authentication = Authenticator::open(database.clone(), config.oidc.clone()).await?;
-        let rows=sqlx::query("SELECT a.job,a.authority,j.principal,r.owner FROM context.workflow_authority a JOIN context.jobs j ON j.id=a.job LEFT JOIN context.resources r ON r.id=j.scope WHERE a.active AND j.state IN ('accepted','running') ORDER BY j.created_at LIMIT 4097")
+        // Persist terminal-job fencing before the runtime can resume any durable run.
+        sqlx::query("UPDATE context.workflow_authority a SET authority=authority||'{\"fenced\":true}'::jsonb FROM context.jobs j WHERE a.job=j.id AND a.active AND j.state IN ('failed','cancelled')")
+            .execute(database.pool()).await.map_err(context_storage::Error::from)?;
+        let rows=sqlx::query("SELECT a.job,a.authority,j.principal,r.owner FROM context.workflow_authority a JOIN context.jobs j ON j.id=a.job LEFT JOIN context.resources r ON r.id=j.scope WHERE a.active AND (j.state IN ('accepted','running') OR (j.state IN ('failed','cancelled') AND j.detail->>'cleanup_pending'='true')) ORDER BY j.created_at LIMIT 4097")
             .fetch_all(database.pool()).await.map_err(context_storage::Error::from)?;
         if rows.len() > 4096 {
             return Err(Error::Configuration);
@@ -118,14 +143,22 @@ impl Application {
             }
             builder.create(parent).map_err(|_| Error::Configuration)?;
         }
+        if !restored.is_empty() && config.data.is_none() {
+            return Err(Error::Configuration);
+        }
         let workflows = Arc::new(WorkflowHost::open(&config.workflows, base, &restored).await?);
         workflows
             .ready(&config.workflows.roles.keys().cloned().collect::<Vec<_>>())
             .await?;
+        let plane = match &config.data {
+            Some(data) => Some(Arc::new(plane::Plane::open(data, base, &workflows).await?)),
+            None => None,
+        };
         Ok(Self {
             database,
             authentication,
             workflows,
+            plane,
         })
     }
 
@@ -142,6 +175,10 @@ impl Application {
     /// Shared role host; provider-specific operations stay in operator graphs.
     pub fn workflows(&self) -> &WorkflowHost {
         &self.workflows
+    }
+
+    fn data_plane(&self) -> Result<&Arc<plane::Plane>> {
+        self.plane.as_ref().ok_or(Error::MissingCapability)
     }
 
     /// Return only the authenticated caller's nonsecret identity and scope ceiling.
@@ -266,6 +303,13 @@ impl Application {
     /// # Errors
     /// Returns workflow shutdown failures.
     pub async fn shutdown(&self) -> Result<()> {
+        if let Some(plane) = &self.plane {
+            plane.stop.cancel();
+            let tasks = std::mem::take(&mut *plane.tasks.lock().await);
+            for task in tasks {
+                let _ = task.await;
+            }
+        }
         self.workflows.shutdown().await?;
         self.database.close().await;
         Ok(())

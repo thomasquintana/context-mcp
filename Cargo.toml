@@ -79,6 +79,8 @@ tempfile = "3"
 reqwest.workspace = true
 sqlx.workspace = true
 htlk.workspace = true
+object_store.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true

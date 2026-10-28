@@ -46,6 +46,7 @@ fn identity(role: &str) -> JobGrant {
         assets: BTreeSet::new(),
         roles: BTreeSet::from([role.into()]),
         fingerprints: Default::default(),
+        fenced: false,
     }
 }
 

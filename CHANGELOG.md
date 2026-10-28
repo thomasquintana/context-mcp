@@ -32,3 +32,12 @@
 - Add immutable, streaming-verified S3 upload promotion, frozen workflow role pins,
   declared accepted-node recovery through existing HTLK inspection, and typed
   provider-neutral processing profile/document contracts for durable ingestion.
+- Add authenticated upload/text ingestion, immutable finalization, job status,
+  cancellation/retry, bounded durable workers and staged indexing/publication.
+- Persist normal-dispatch cancellation fences, reconcile missing HTLK admission
+  handles through existing public APIs, restrict cleanup authority and retain
+  pending cleanup on failure. Scope staged derivatives to their producing jobs.
+- Verify application recovery, retry capacity/idempotency and publication using
+  actual PostgreSQL/MinIO/Typesense; extend actual HTTP/stdio binary tests with
+  ingestion and fenced external-mutation checks. Processing roles are pure fixtures;
+  combined live-provider ingestion/full-format coverage remains pending.

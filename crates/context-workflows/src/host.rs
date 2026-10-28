@@ -119,6 +119,9 @@ pub struct JobGrant {
     /// Trusted diagnostic callers may omit pins when no application job is persisted.
     #[serde(default)]
     pub fingerprints: BTreeMap<String, String>,
+    /// Block normal MCP dispatch during cancelled/failed admission reconciliation.
+    #[serde(default)]
+    pub fenced: bool,
 }
 
 struct AuthorizedJob {
@@ -126,6 +129,7 @@ struct AuthorizedJob {
     graphs: BTreeSet<Digest>,
     bindings: BTreeSet<Digest>,
     active: bool,
+    dispatch: Option<BTreeSet<Digest>>,
 }
 
 struct Policy {
@@ -191,14 +195,22 @@ impl RuntimePolicy for Policy {
             Authorization::DispatchMcp {
                 binding, labels, ..
             } => {
+                let digest = binding.digest(&self.limits).map_err(|_| deny())?;
                 protected_by(&job.identity, labels)
+                    && job.bindings.contains(&digest)
                     && job
-                        .bindings
-                        .contains(&binding.digest(&self.limits).map_err(|_| deny())?)
+                        .dispatch
+                        .as_ref()
+                        .is_none_or(|allowed| allowed.contains(&digest))
             }
-            Authorization::ReadResource { binding, .. } => job
-                .bindings
-                .contains(&binding.digest(&self.limits).map_err(|_| deny())?),
+            Authorization::ReadResource { binding, .. } => {
+                let digest = binding.digest(&self.limits).map_err(|_| deny())?;
+                job.bindings.contains(&digest)
+                    && job
+                        .dispatch
+                        .as_ref()
+                        .is_none_or(|allowed| allowed.contains(&digest))
+            }
             _ => false,
         };
         if allowed { Ok(()) } else { Err(deny()) }
@@ -304,6 +316,8 @@ impl WorkflowHost {
                 policy.clone(),
                 RuntimeConfig {
                     limits: limits.clone(),
+                    idempotency_retention_ms: 30 * 24 * 60 * 60 * 1000,
+                    audit_retention_ms: 30 * 24 * 60 * 60 * 1000,
                     ..RuntimeConfig::default()
                 },
             )?
@@ -429,6 +443,56 @@ impl WorkflowHost {
             .get_mut(&job)
             .ok_or(Error::Unauthorized)?
             .active = false;
+        Ok(())
+    }
+
+    /// Fence external dispatch before stable-key admission replay/cancellation.
+    ///
+    /// # Errors
+    /// Rejects unknown/revoked authority. Admission and protected inspection remain available.
+    pub fn fence_job(&self, job: JobId) -> Result<()> {
+        let mut jobs = self.policy.jobs.write().map_err(|_| Error::Unauthorized)?;
+        let job = jobs
+            .get_mut(&job)
+            .filter(|job| job.active)
+            .ok_or(Error::Unauthorized)?;
+        job.identity.fenced = true;
+        job.dispatch = Some(BTreeSet::new());
+        Ok(())
+    }
+
+    /// Enable only already-granted cleanup bindings after normal runs are settled.
+    ///
+    /// # Errors
+    /// Rejects unfenced jobs or role/authority expansion.
+    pub fn allow_cleanup(&self, job: JobId, roles: &BTreeSet<String>) -> Result<()> {
+        let mut jobs = self.policy.jobs.write().map_err(|_| Error::Unauthorized)?;
+        let job = jobs
+            .get_mut(&job)
+            .filter(|job| job.active && job.identity.fenced)
+            .ok_or(Error::Unauthorized)?;
+        if !roles.is_subset(&job.identity.roles) {
+            return Err(Error::Unauthorized);
+        }
+        let mut bindings = BTreeSet::new();
+        for role in roles {
+            for binding in self
+                .roles
+                .get(role)
+                .ok_or(Error::Configuration)?
+                .document
+                .fields()
+                .bindings
+                .values()
+            {
+                bindings.insert(
+                    binding
+                        .digest(&self.limits)
+                        .map_err(|_| Error::Configuration)?,
+                );
+            }
+        }
+        job.dispatch = Some(bindings);
         Ok(())
     }
 
@@ -680,14 +744,33 @@ impl WorkflowHost {
         let context = self.handle_context(handle)?;
         let run =
             RunId::new(handle.run_id.clone(), &self.limits).map_err(|_| Error::Configuration)?;
-        let view = self.runtime.inspect_run(&context, &run).await?;
-        if view.header.fingerprint.to_string() != handle.fingerprint {
-            return Err(Error::Unauthorized);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let outcome = async {
+                let view = self.runtime.inspect_run(&context, &run).await?;
+                if view.header.fingerprint.to_string() != handle.fingerprint {
+                    return Err(Error::Unauthorized);
+                }
+                if view.header.status != RunStatus::Running {
+                    return Ok(true);
+                }
+                self.runtime
+                    .cancel_run(&context, &run, "application requested cancellation", key)
+                    .await?;
+                Ok(false)
+            }
+            .await;
+            match outcome {
+                Ok(true) => return Ok(()),
+                Ok(false) => {}
+                Err(Error::Runtime(error)) if error.code() == FailureCode::Fenced => {}
+                Err(error) => return Err(error),
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(Error::Configuration);
+            }
+            actix::clock::sleep(std::time::Duration::from_millis(20)).await;
         }
-        self.runtime
-            .cancel_run(&context, &run, "application requested cancellation", key)
-            .await?;
-        Ok(())
     }
 
     /// Stop admission/workers and release native sessions, preserving durable records.
@@ -752,10 +835,22 @@ fn grant(
         }
     }
     let mut jobs = policy.jobs.write().map_err(|_| Error::Unauthorized)?;
-    match jobs.get(&identity.job) {
-        Some(existing) if existing.identity == identity && existing.active => Ok(()),
+    match jobs.get_mut(&identity.job) {
+        Some(existing) if existing.active => {
+            let mut comparable = identity.clone();
+            comparable.fenced = existing.identity.fenced;
+            if existing.identity != comparable {
+                return Err(Error::Unauthorized);
+            }
+            if identity.fenced && !existing.identity.fenced {
+                existing.identity.fenced = true;
+                existing.dispatch = Some(BTreeSet::new());
+            }
+            Ok(())
+        }
         Some(_) => Err(Error::Unauthorized),
         None => {
+            let dispatch = identity.fenced.then(BTreeSet::new);
             jobs.insert(
                 identity.job,
                 AuthorizedJob {
@@ -763,6 +858,7 @@ fn grant(
                     graphs,
                     bindings,
                     active: true,
+                    dispatch,
                 },
             );
             Ok(())

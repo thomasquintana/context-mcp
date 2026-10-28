@@ -4,19 +4,22 @@ A Rust context engine for agents: multimodal evidence, navigable context maps,
 versioned semantic memory, and cited synthesis. Apache-2.0.
 
 **Implementation status:** domain contracts, backing-service clients, authenticated
-MCP HTTP/stdio foundation and shared HTLK hosting are implemented and tested.
-The ingestion/knowledge processing pipeline is under development;
-the integration host has verified unchanged HTLK discovery against both initial
+MCP HTTP/stdio services, upload/text/job processing and shared HTLK hosting are
+implemented and tested. The durable ingestion service is verified against actual
+backing services with pure role fixtures; full-format processing roles and knowledge
+services remain under development.
+The integration host has verified unchanged HTLK discovery against both initial
 providers and compiled read-only invocation against the actual sandbox server.
 Native FFmpeg processing, normal sandbox cleanup, and actual OpenAI generation,
 embedding and transcription through HTLK are verified. Sandbox restart recovery
 has a measured provider bug which the user accepts; cleanup uses existing destroy
 calls and provider success receipts.
-The application ingestion pipeline remains incomplete. See the
+Combined live-provider application processing remains pending. See the
 [integration evidence](docs/integration-spike.md).
 See [the specification](docs/specification.md) and
 [acceptance criteria](docs/acceptance.md) for the target behavior and verification.
 See [server setup and implemented operations](docs/server-foundation.md).
+See [upload/job contracts and recovery evidence](docs/ingestion.md).
 
 ## Architecture
 

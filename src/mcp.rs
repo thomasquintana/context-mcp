@@ -2,7 +2,7 @@
 
 use context_core::{
     access::Authentication,
-    ids::{AssetId, CollectionId, TenantId, WorkspaceId},
+    ids::{AssetId, CollectionId, JobId, TenantId, WorkspaceId},
 };
 use context_engine::Application;
 use rmcp::{
@@ -84,6 +84,33 @@ struct CollectionArguments {
     idempotency_key: String,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FinalizeArguments {
+    upload: uuid::Uuid,
+    idempotency_key: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TextArguments {
+    collection: CollectionId,
+    name: String,
+    text: String,
+    profile: Option<String>,
+    idempotency_key: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JobArguments {
+    job: JobId,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JobControlArguments {
+    job: JobId,
+    idempotency_key: String,
+}
+
 impl ServerHandler for McpServer {
     fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
         Cow::Owned(vec![ProtocolVersion::V_2025_11_25])
@@ -142,6 +169,53 @@ impl ServerHandler for McpServer {
                     .create_collection(&actor, args.workspace, &args.label, &args.idempotency_key)
                     .await
             }
+            "context_create_upload" => {
+                let args: context_engine::uploads::CreateUpload = serde_json::from_value(arguments)
+                    .map_err(|_| ErrorData::invalid_params("invalid upload arguments", None))?;
+                self.application.create_upload(&actor, args).await
+            }
+            "context_finalize_upload" => {
+                let args: FinalizeArguments = serde_json::from_value(arguments).map_err(|_| {
+                    ErrorData::invalid_params("invalid finalization arguments", None)
+                })?;
+                self.application
+                    .finalize_upload(&actor, args.upload, &args.idempotency_key)
+                    .await
+            }
+            "context_ingest_text" => {
+                let args: TextArguments = serde_json::from_value(arguments)
+                    .map_err(|_| ErrorData::invalid_params("invalid text arguments", None))?;
+                self.application
+                    .ingest_text(
+                        &actor,
+                        args.collection,
+                        &args.name,
+                        &args.text,
+                        args.profile,
+                        &args.idempotency_key,
+                    )
+                    .await
+            }
+            "context_job_status" => {
+                let args: JobArguments = serde_json::from_value(arguments)
+                    .map_err(|_| ErrorData::invalid_params("invalid job arguments", None))?;
+                self.application.job_status(&actor, args.job).await
+            }
+            "context_cancel_job" | "context_retry_job" => {
+                let args: JobControlArguments =
+                    serde_json::from_value(arguments).map_err(|_| {
+                        ErrorData::invalid_params("invalid job control arguments", None)
+                    })?;
+                if request.name == "context_cancel_job" {
+                    self.application
+                        .cancel_job(&actor, args.job, &args.idempotency_key)
+                        .await
+                } else {
+                    self.application
+                        .retry_job(&actor, args.job, &args.idempotency_key)
+                        .await
+                }
+            }
             _ => return Err(ErrorData::invalid_params("unknown tool", None)),
         };
         let mut result = match result {
@@ -156,6 +230,10 @@ impl ServerHandler for McpServer {
                         "unavailable"
                     }
                     context_engine::Error::Storage(context_storage::Error::Conflict) => "conflict",
+                    context_engine::Error::MissingCapability => "missing_capability",
+                    context_engine::Error::Busy => "overloaded",
+                    context_engine::Error::Contract => "processing_contract",
+                    context_engine::Error::Cancelled => "cancelled",
                     _ => "operation_failed",
                 };
                 CallToolResult::structured_error(
@@ -200,6 +278,42 @@ pub fn tools() -> Vec<Tool> {
             json!({"type":"object","required":["workspace","label","idempotency_key"],"properties":{"workspace":id,"label":{"type":"string","minLength":1,"maxLength":256},"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false}),
             false,
         ),
+        (
+            "context_create_upload",
+            "Reserve a tracked upload session and immutable source revision. Return signed transfer URL/headers; finalize after transfer. Requires Ingest authority and configured processing capabilities.",
+            json!({"type":"object","required":["collection","name","media_type","size_bytes","sha256","idempotency_key"],"properties":{"collection":id,"asset":id,"name":{"type":"string","minLength":1,"maxLength":256},"media_type":{"type":"string","maxLength":128},"size_bytes":{"type":"integer","minimum":1},"sha256":{"type":"string","pattern":"^[0-9a-fA-F]{64}$"},"profile":{"type":"string"},"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false}),
+            false,
+        ),
+        (
+            "context_finalize_upload",
+            "Verify/freeze uploaded bytes and accept one durable processing job. Failed replacement preserves the previous published revision.",
+            json!({"type":"object","required":["upload","idempotency_key"],"properties":{"upload":id,"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false}),
+            false,
+        ),
+        (
+            "context_ingest_text",
+            "Ingest bounded UTF-8 text through the verified-source and durable publication pipeline. Stable keys prevent duplicate assets/jobs.",
+            json!({"type":"object","required":["collection","name","text","idempotency_key"],"properties":{"collection":id,"name":{"type":"string","minLength":1,"maxLength":256},"text":{"type":"string","minLength":1,"maxLength":262144},"profile":{"type":"string"},"idempotency_key":{"type":"string","minLength":1,"maxLength":200}},"additionalProperties":false}),
+            false,
+        ),
+        (
+            "context_job_status",
+            "Read creator-owned progress/error and cleanup status. Raw inputs, opaque handles and source content are not returned.",
+            json!({"type":"object","required":["job"],"properties":{"job":id},"additionalProperties":false}),
+            true,
+        ),
+        (
+            "context_cancel_job",
+            "Fence an owned ingestion job and request existing HTLK cancellation/cleanup. Published terminal success cannot be overwritten.",
+            json!({"type":"object","required":["job","idempotency_key"],"properties":{"job":id,"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false}),
+            false,
+        ),
+        (
+            "context_retry_job",
+            "Explicitly retry a settled failed/cancelled revision as a new durable job with retained exact workflow revisions.",
+            json!({"type":"object","required":["job","idempotency_key"],"properties":{"job":id,"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false}),
+            false,
+        ),
     ];
     let output = Arc::new(
         json!({"type":"object","additionalProperties":true})
@@ -219,7 +333,7 @@ pub fn tools() -> Vec<Tool> {
             .with_annotations(
                 ToolAnnotations::new()
                     .read_only(read)
-                    .destructive(false)
+                    .destructive(name == "context_cancel_job")
                     .idempotent(true)
                     .open_world(false),
             )

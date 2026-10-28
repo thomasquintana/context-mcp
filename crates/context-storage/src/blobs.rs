@@ -1,6 +1,7 @@
 //! Bounded S3-compatible payload storage and expiring transfer URLs.
 
 use crate::{Error, Result};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use bytes::Bytes;
 use futures_util::TryStreamExt;
 use object_store::{
@@ -340,6 +341,56 @@ impl Blobs {
     /// Rejects zero/excessive lifetime; credentials never appear in normal diagnostics.
     pub async fn upload_url(&self, key: &str, lifetime: Duration) -> Result<String> {
         self.signed_url(Method::PUT, key, lifetime).await
+    }
+
+    /// Verify access to the explicitly provisioned bucket using standard S3 HeadBucket.
+    ///
+    /// # Errors
+    /// Rejects unavailable/misconfigured infrastructure before serving upload requests.
+    pub async fn ready(&self) -> Result<()> {
+        let url = self
+            .store
+            .signed_url(Method::HEAD, &Path::from(""), Duration::from_secs(60))
+            .await?;
+        self.client.head(url).send().await?.error_for_status()?;
+        Ok(())
+    }
+
+    /// Presign a tracked checksum-constrained PUT with the declared client length.
+    ///
+    /// The checksum header is signed. Content-Length is controlled by the standard
+    /// signer/HTTP client; exact advertised/streamed size is verified before admission.
+    ///
+    /// # Errors
+    /// Rejects invalid keys/lifetimes and signing/header failures.
+    pub async fn bounded_upload_url(
+        &self,
+        key: &str,
+        size: u64,
+        sha256: &[u8; 32],
+        lifetime: Duration,
+    ) -> Result<(String, std::collections::BTreeMap<String, String>)> {
+        if lifetime.is_zero() || lifetime > Duration::from_secs(900) {
+            return Err(Error::Invalid);
+        }
+        let length = size.to_string();
+        let checksum = STANDARD.encode(sha256);
+        let options = SignedUrlOptions::new().with_signed_header(
+            HeaderName::from_static("x-amz-checksum-sha256"),
+            HeaderValue::from_str(&checksum).map_err(|_| Error::Invalid)?,
+        );
+        let url = self
+            .store
+            .signed_url_opts(Method::PUT, &managed_path(key)?, lifetime, &options)
+            .await?;
+        Ok((
+            url.into(),
+            [
+                ("content-length".into(), length),
+                ("x-amz-checksum-sha256".into(), checksum),
+            ]
+            .into(),
+        ))
     }
 
     /// Issue a short-lived source URL only after current resource authorization.

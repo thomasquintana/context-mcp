@@ -17,6 +17,21 @@ pub struct AuthorizedTransaction<'a> {
 }
 
 impl Database {
+    /// Authorize a read-only control view using its action-specific capability.
+    ///
+    /// Application services use this for upload/job metadata, never source bodies
+    /// unless the selected permission is Read.
+    ///
+    /// # Errors
+    /// Denies missing, revoked, expired or forbidden authority.
+    pub async fn authorized_view(
+        &self,
+        actor: &Authentication,
+        target: Resource,
+        permission: Permission,
+    ) -> Result<AuthorizedTransaction<'_>> {
+        self.authorized(actor, target, permission, false).await
+    }
     /// Authorize a protected read with credential state, memberships and data in one snapshot.
     ///
     /// # Errors

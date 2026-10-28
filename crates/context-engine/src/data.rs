@@ -37,6 +37,8 @@ pub struct Profile {
     pub describe_role: Option<String>,
     /// Transcription role for audio segments, when the profile needs it.
     pub transcribe_role: Option<String>,
+    /// Optional provider-artifact read role for non-local output references.
+    pub artifact_role: Option<String>,
     /// Summary/entity enrichment role.
     pub enrich_role: String,
     /// Selected compatible embedding space.
@@ -79,7 +81,7 @@ pub struct Config {
     pub max_upload_bytes: u64,
     /// Signed upload lifetime; pending purge waits out outstanding write capabilities.
     pub upload_lifetime_seconds: u64,
-    /// Bounded accepted queue size.
+    /// Maximum unfinished jobs, including pending cleanup (1..=4096).
     pub max_pending_jobs: i64,
     /// In-process processing workers.
     pub workers: usize,
@@ -135,6 +137,10 @@ pub struct Extraction {
     pub media_type: String,
     /// Bounded ordered evidence segments.
     pub segments: Vec<Segment>,
+    /// Optional opaque continuation; each page is a separate idempotent stage.
+    pub next_cursor: Option<serde_json::Value>,
+    /// Bounded source metadata such as duration, dimensions or page count.
+    pub metadata: Option<serde_json::Value>,
 }
 
 /// Media segment class, not a provider tool selection.
@@ -159,6 +165,12 @@ pub struct Segment {
     pub text: Option<String>,
     /// Private output basename when present.
     pub file: Option<String>,
+    /// Bounded inline bytes when the provider does not share local staging.
+    pub data_base64: Option<String>,
+    /// Opaque provider reference read only through its configured artifact role.
+    pub reference: Option<serde_json::Value>,
+    /// File digest, preventing mutable staging from changing a saved manifest.
+    pub sha256: Option<String>,
     /// Model-readable file media type when relevant.
     pub media_type: Option<String>,
     /// Exact original-source position.
@@ -173,6 +185,9 @@ pub struct Enrichment {
     pub summary: String,
     /// Explicit bounded entity names/types; relationships are separate application records.
     pub entities: Vec<Entity>,
+    /// Generated relationships between declared entity names.
+    #[serde(default)]
+    pub relationships: Vec<Relationship>,
 }
 
 /// A generated entity observation retaining source lineage.
@@ -183,4 +198,16 @@ pub struct Entity {
     pub name: String,
     /// Domain/entity type.
     pub entity_type: String,
+}
+
+/// Source-grounded generated relationship between entity mentions.
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Relationship {
+    /// Source entity name in the enrichment document.
+    pub from: String,
+    /// Target entity name in the enrichment document.
+    pub to: String,
+    /// Relationship kind.
+    pub relationship: String,
 }

@@ -5,10 +5,12 @@ Public MCP tools return object-valued `structuredContent`, publish input/output
 schemas, and expose redacted typed failures. HTTP/CLI use the same application
 services and authorization rules.
 
-Implemented foundation tools: `context_identity`, `context_resource`, and
-`context_create_collection`. Their exact descriptors are exported by `context-mcp
-catalog`. The remaining contracts below are target capabilities pending their
-application milestones. See server-foundation.md for executable setup and evidence.
+Implemented tools: `context_identity`, `context_resource`,
+`context_create_collection`, `context_create_upload`, `context_finalize_upload`,
+`context_ingest_text`, `context_job_status`, `context_cancel_job`, and
+`context_retry_job`. Their exact descriptors are exported by `context-mcp catalog`.
+See ingestion.md for implemented job/role contracts and server-foundation.md for
+setup. The remaining capabilities below await their application milestones.
 
 ## Public operations
 
@@ -40,9 +42,9 @@ complete exact descriptors; bindings supply endpoints/credentials. Domains do no
 accept arbitrary tool names, endpoints, shell commands, or graph source from users.
 
 Application operations prepare staged inputs, validate outputs, persist data and
-publish revisions. The integration spike must choose an existing HTLK host boundary
-(for example its public typed input/reply facility or ordinary application MCP
-operations), without assuming a custom adapter. All provider calls remain HTLK-owned.
+publish revisions. The shared host uses existing public HTLK admission, inspection,
+artifact and RuntimePolicy interfaces. All provider calls remain HTLK-owned; see
+workflow-host.md and ingestion.md for the implemented role/recovery boundary.
 
 ## Failure contract
 

@@ -565,6 +565,7 @@ dependencies = [
 name = "context-engine"
 version = "0.1.0"
 dependencies = [
+ "actix",
  "base64 0.23.1",
  "bytes",
  "context-auth",
@@ -573,14 +574,18 @@ dependencies = [
  "context-workflows",
  "futures-util",
  "libc",
+ "object_store",
  "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "sqlx",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
@@ -597,11 +602,13 @@ dependencies = [
  "context-storage",
  "context-workflows",
  "htlk",
+ "object_store",
  "reqwest",
  "rmcp",
  "secrecy",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sqlx",
  "tempfile",
  "tokio",
@@ -617,6 +624,7 @@ dependencies = [
 name = "context-storage"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "bytes",
  "context-core",
  "futures-util",

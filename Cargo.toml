@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/context-core", "crates/context-workflows"]
+members = ["crates/context-core", "crates/context-workflows", "crates/context-storage"]
 resolver = "3"
 
 [workspace.package]
@@ -17,6 +17,9 @@ thiserror = "2"
 uuid = { version = "1", features = ["serde", "v7"] }
 actix = "=0.13.5"
 htlk = { version = "=0.1.0", git = "https://github.com/thomasquintana/htlk.git", rev = "3448acb5dc7cebef4d08ef37bb79757fea780659" }
+sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "json", "migrate", "macros"] }
+tokio = { version = "=1.53.3", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync", "time", "signal"] }
+sha2 = "=0.10.9"
 
 [workspace.lints.rust]
 missing_docs = "warn"

@@ -129,6 +129,8 @@
 ### T3 — Service foundation and authoritative persistence [in progress]
 
 - T3a — PostgreSQL schema/repositories and S3/Typesense clients [in progress].
+  - T3a1 PostgreSQL schema and transactional primitives [completed].
+  - T3a2 S3/Typesense clients and live verification [in progress].
 - T3b — Shared production HTLK host and role contracts [pending].
 - T3c — Authentication, authorization, transport and durable jobs [pending].
 
@@ -278,11 +280,22 @@
   mechanism. Preserve evidence; proceed with existing protocols. T2 completed at
   provider-integration scope; production application E2E remains explicitly T4/T5.
   Prior live-verification commit: 2f85d68.
+- T3a1: context-storage SQLx0.9 PostgreSQL schema and repositories added. Resources
+  enforce immutable ancestry/ownership, revisions are immutable, generation and
+  purging-ancestor checks guard publication. Scope/grant hydration, serialized
+  idempotency receipt admission and concurrent job claiming implemented. Fixed
+  login-role/application-schema migration search_path collision during actual tests.
+- T3a1 verification: 5 actual PostgreSQL tests passed on fresh database
+  context_authority using disposable local container context-mcp-test-postgres,
+  localhost55432, PG16 image9e2cf628... (full digest in docs/persistence.md).
+  fmt, strict workspace all-target Clippy, normal workspace tests (9 passed plus
+  5 explicitly ignored backing-service tests), strict rustdoc all passed. No
+  sibling changes. Storage primitives do not claim completed request auth/service.
 
 ## Resume checkpoint
 
-Current task: T3a. Next: implement PostgreSQL authority/migrations and S3/Typesense
-clients with real backing-service verification. Continue to production HTLK hosting
+Current task: T3a2. Next: implement S3/Typesense clients with real backing-service
+verification. PostgreSQL primitives verified; see docs/persistence.md. Continue to production HTLK hosting
 using existing public interfaces and role contracts. Provider orphan limitation is
 accepted; no adaptation needed. Preserve this plan; cleanup/final push happen only
 after full verification.

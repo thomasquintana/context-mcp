@@ -6,8 +6,8 @@ claim needs observed evidence; fixture coverage cannot establish provider behavi
 | ID | Criterion | Current evidence |
 | --- | --- | --- |
 | A01 | Typed, provider-neutral source/memory/context contracts | Implemented in context-core |
-| A02 | Credential scope and inherited/cross-tenant grants both required | Domain unit test; persistence/HTTP verification pending |
-| A03 | Terminal jobs immutable; stale generation cannot publish | Domain unit tests; transactional verification pending |
+| A02 | Credential scope and inherited/cross-tenant grants both required | Domain and actual PostgreSQL tests; request authentication/authorization integration pending |
+| A03 | Terminal jobs immutable; stale generation cannot publish | Domain tests and actual PostgreSQL generation/ancestor publication tests; full worker integration pending |
 | A04 | Transitive mixed-source purge; citation-only assertions survive | Domain unit test including cyclic lineage; physical cleanup pending |
 | A05 | Real unchanged HTLK compilation/admission/execution | Verified public-API integration tests and actual sandbox metadata graph; see integration-spike.md |
 | A06 | Real initial sandbox execution and model processing | Actual FFmpeg extraction/destruction, finite embeddings, known-phrase transcription and correct image inference verified; initial 429 and mini-model image error preserved separately |

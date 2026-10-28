@@ -14,3 +14,6 @@
 - Verify actual OpenAI embeddings, known-phrase transcription and image inference
   after account activation. Preserve the initial mini-model image semantic failure;
   configure the verified generation model and bounded media-sized evaluator policy.
+- Add PostgreSQL application authority/migrations, immutable hierarchy/revisions,
+  permission-chain hydration, generation-gated publication, serialized admission
+  receipts and concurrent job claims, verified against actual PostgreSQL.

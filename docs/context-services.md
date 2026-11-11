@@ -75,6 +75,9 @@ for a PDF page,16x16 crop, one-second video and one-second audio, including inde
 dimensions/duration/digest checks. Evidence:
 `target/providers/formats-o4lwuk8x/evidence.json`, image
 `sha256:707838fe31b4f8584ddb1f9e91c7fcef84cf7c760269e1262528c1b9c98b5407`.
+All four selection checks passed again with the upgraded HTLK `1e405c49` and the
+same image on 2026-11-11; new evidence is
+`target/providers/formats-hnl2i5wt/evidence.json`.
 
 ## Sharing and revocation
 

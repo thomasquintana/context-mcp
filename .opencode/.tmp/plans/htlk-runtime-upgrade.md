@@ -51,7 +51,7 @@ Initial reviewed integration target: `521f795d913ae3e13938b8ed0fe19728d2babce6`.
    tests and existing auth/revocation/cancel/fenced-cleanup tests. Run fresh nonpaid
    PostgreSQL/S3/Typesense/Keycloak campaign, actual sandbox metadata, both transports
    and CLI, with repeated readiness/session reclamation. Fix observed regressions.
-6. **Release gates/evidence — in progress.** Refresh notices, changelog and measured
+6. **Release gates/evidence — completed.** Refresh notices, changelog and measured
    acceptance/verification docs. Preserve coverage floors/budgets. Run locked build,
    tracked release audit, `tools/verify.py --coverage`, notice check, dependency gates
    and deterministic release. Clearly retain historical paid/native-format evidence.
@@ -164,6 +164,18 @@ paid-test authorization. Remove only this campaign's disposable backing services
   Locked workspace check, all 25 ordinary tests and actual PostgreSQL macro/ledger
   reopen pass; strict advisory/license/source/bans and regenerated notice check pass.
   Final full coverage/release campaign remains pending for this corrected graph.
+- Task 6 completed on the corrected standard-SQLx graph: locked build and
+  `tools/verify.py --coverage` pass all 52 Rust tests (25 ordinary, 27 actual-service
+  opt-in), fmt, strict Clippy/rustdoc, advisory/license/source/bans, coverage budget
+  checker and core Cargo package rebuild. Exact measured lines: core 210/233,
+  storage 916/1001, workflows 726/881, auth 397/421, engine 4370/5110, process
+  199/737, application 807/1282. Existing floors/uncovered budgets remain unchanged.
+  Notice check and tracked release audit pass. `tools/release.py` built locked
+  optimized binaries and verified identical deterministic source archives. Final
+  native HTLK 28+4 cases passed under formats-hnl2i5wt; no paid calls invoked.
+  Updated permanent acceptance/verification/native evidence with historical paid
+  boundaries. Stopped only context-mcp-ci services/volumes; original user containers
+  remain running. Refresh deterministic archive after final documentation edits.
 
 ## Current next action
 
@@ -171,8 +183,7 @@ User reported updated HTLK; reviewed merged upstream PR #23 at 1e405c49. It pins
 rusqlite 0.41.1 with patched bundled SQLite, replaces affected tokio-rusqlite with
 an upstream-private connection worker, preserves public APIs/schema 13 and changes
 native/executable fingerprints. Upstream dependency/quality/line/branch CI passed.
-Follow latest user direction: reverse PostgreSQL-only SQLx changes and pin the
-standard SQLx facade to official merged PR #4502. Verify/commit this scoped reversal
-and fix; then rerun full coverage/service/release checks, update measured docs and
-finish task 7 with a new context-mcp PR. Native formats on the final HTLK revision
-already passed; SQLx does not participate in the independent native host campaign.
+Commit task 6's verified permanent evidence and plan update. Then perform task 7:
+review all commits and base diff, refresh release archive for final docs, audit
+tracked inputs, push this branch, create a new PR, record its URL in this plan,
+commit/push the completion record and report actual remote CI status separately.

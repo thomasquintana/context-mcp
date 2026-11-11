@@ -34,7 +34,7 @@ by this documentation request. Existing measured evidence is not a newly execute
 1. **Branch and plan — completed.** Inspect clean status/diff/history and merged PR;
    branch from current origin/main; save this plan and add branch-specific alignment
    instructions to AGENTS.md. Verify diff and tracked-input audit; commit setup.
-2. **Write handbook — pending.** Cover introduction/concepts, prerequisites/client
+2. **Write handbook — completed.** Cover introduction/concepts, prerequisites/client
    connections, first workflow, ingestion/uploads/URLs/jobs, query/navigation/history,
    media, memories/reconciliation, synthesis, sharing, purge, full installation and
    operations, troubleshooting and complete reference (23 tools, 12 CLI commands,
@@ -81,9 +81,23 @@ by this documentation request. Existing measured evidence is not a newly execute
   compaction. No application state or services touched.
 - Task 1 verified: git diff --check and python3 tools/audit_release.py pass;
   reviewed status, diff and recent history. Commit only AGENTS.md and this plan.
+- Task 2: wrote docs/user-guide.md (20 sections, 2,416 lines, about 14,400 words),
+  linked prominently from README.md and deployment.md. Covers all planned user and
+  operator workflows, precise lifetime/provenance/deletion boundaries, full tool/CLI
+  references, configuration/permissions/limits, troubleshooting and glossary.
+  Cross-checked dispatch/schemas, CLI, client, setup generators/Compose, memory,
+  synthesis, media and index repair implementations. One-off external QA script
+  parses 55 JSON blocks/heredocs, validates 39 argument examples against the exported
+  schemas with placeholder UUID substitution, checks 30 shell blocks with bash -n,
+  resolves 68 local links/anchors, and confirms all 23 tools/12 CLI subcommands.
+  Hash example independently matches SHA-256 of the exact five bytes hello.
+  git diff --check passes. No live model calls or application behavior changes.
+  Follow-up: final source/CLI review and required isolated nonpaid release gates.
 
 ## Current next action
 
-Commit task 1, reread this plan, then write task 2. Use the prior read-only
-research as a map, verifying exact commands/requests against current source. Update
-this section and task evidence after every completion.
+Commit the verified handbook task, reread this plan, then perform task 3. Existing
+user containers occupy default service ports; use a separate context-mcp-ci stack
+on alternate ports and remove only that owned disposable stack after verification.
+Do not run paid model/format campaigns to validate prose. Update this section and
+completion evidence after the task.

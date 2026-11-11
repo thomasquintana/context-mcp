@@ -232,7 +232,10 @@ graph fixture.{role} {{
         let http=reqwest::Client::builder().timeout(Duration::from_secs(1)).build().unwrap();
         let base=format!("http://{address}");
         let mut ready=false;
-        for _ in 0..100 {
+        // Instrumented hosted startup includes tokenizer/index initialization;
+        // bound wall-clock time rather than assuming 100 quick polls are enough.
+        let startup_deadline=std::time::Instant::now()+Duration::from_secs(60);
+        while std::time::Instant::now()<startup_deadline {
             if http.get(format!("{base}/health/ready")).send().await.is_ok_and(|r|r.status().is_success()){ready=true;break;}
             assert!(process.0.try_wait().unwrap().is_none(),"actual server exited during startup");
             actix::clock::sleep(Duration::from_millis(100)).await;

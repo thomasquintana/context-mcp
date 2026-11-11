@@ -67,7 +67,12 @@ Initial reviewed integration target: `521f795d913ae3e13938b8ed0fe19728d2babce6`.
    Verify actual published evidence, vectors, model outcomes, citations, purge and
    both transports; accept normal sandbox destroy receipts under the existing
    provider boundary. Record exact evidence/images and failures, clean only owned
-   services, update permanent docs, commit and push results to PR #1.
+  services, update permanent docs, commit and push results to PR #1.
+9. **Observed hosted-CI startup follow-up — in progress.** PR's nonpaid Linux coverage
+   transport test failed after its fixed ~10-second server-readiness allowance while
+   the server remained alive. Preserve all outcome assertions and use a finite
+   wall-clock startup allowance suitable for instrumented hosted startup. Verify
+   targeted/full transport checks and report subsequent actual remote CI separately.
 
 ## Verification commands
 
@@ -207,6 +212,34 @@ paid-test authorization. Remove only this campaign's disposable backing services
   Pinned unchanged model provider and sandbox layers were used. Existing processing
   image is `sha256:707838fe31b4f8584ddb1f9e91c7fcef84cf7c760269e1262528c1b9c98b5407`.
   No application data or existing service containers modified during preparation.
+- Paid deployment campaign passed using the rebuilt image and real gpt-4.1,
+  whisper-1 and text-embedding-3-small. Evidence:
+  `target/deployment/verified-ozka9ng1/evidence.json`. All HTTP video/retrieval/native
+  clip/model conflict/saved synthesis/transitive purge and stdio ingest/query/purge
+  assertions passed. Its project/services/volumes were removed by the harness.
+  Observed Docker image identity in the receipt is
+  `sha256:b7adc2e45760d8cd7f7ce1f97f2a39af66aea907dedbdda132ee633818f32de6`;
+  c9366f98 above is the build's config digest, not the campaign's reported image ID.
+  The additional paid Rust case initially failed before ingestion/model work: its
+  stale fixture tried to reuse a retained 3-D index identity for the 256-D model
+  space, correctly rejected by application startup. Correct only the test setup
+  to allocate a distinct model collection and retire its own unused empty fixture
+  collection/binding. Rerun the explicit paid Rust case and retain this finding.
+- Paid Rust case now passes (19.58 seconds of test execution), independently
+  checking >=2 published chunks containing the known blue/ocean evidence, finite
+  256-dimensional embeddings and exact Typesense document count. Its managed
+  fixture cleanup completed. Both authorized paid campaigns passed with no model
+  failure; the initial Rust failure was a pre-ingestion test configuration issue.
+  Hosted CI failure is separately attributed to the nonpaid transport test's
+  100x100-ms readiness loop; replace it with a finite 60-second wall-clock startup
+  bound while retaining process-exit and actual HTTP readiness assertions.
+- Task 9 local fix verification: actual HTTP/stdio/CLI transport campaign passes
+  with a finite 60-second wall-clock startup allowance (68.75 seconds test total).
+  No production timeout or transport assertion changed. Commit/push this scoped
+  fix to start a hosted rerun while finishing paid evidence and final checks.
+  Paid campaign staging is empty and a private equality scan of all 26 retained
+  files found zero source model-credential matches. The Rust fixture's test setup
+  correction remains scoped to its own empty bootstrap collection/binding.
 
 ## Current next action
 

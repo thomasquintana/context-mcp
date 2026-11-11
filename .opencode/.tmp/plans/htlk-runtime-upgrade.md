@@ -55,7 +55,7 @@ Initial reviewed integration target: `521f795d913ae3e13938b8ed0fe19728d2babce6`.
    acceptance/verification docs. Preserve coverage floors/budgets. Run locked build,
    tracked release audit, `tools/verify.py --coverage`, notice check, dependency gates
    and deterministic release. Clearly retain historical paid/native-format evidence.
-7. **Final review and PR — pending.** Read plan, review all commits/base diff,
+7. **Final review and PR — completed.** Read plan, review all commits/base diff,
    confirm intended changes committed and no secrets, push this branch and create a
    new PR. Return PR URL and actual local/remote verification status.
 
@@ -176,6 +176,18 @@ paid-test authorization. Remove only this campaign's disposable backing services
   Updated permanent acceptance/verification/native evidence with historical paid
   boundaries. Stopped only context-mcp-ci services/volumes; original user containers
   remain running. Refresh deterministic archive after final documentation edits.
+- Task 7: reviewed all nine implementation/evidence commits and the complete base
+  diff against freshly fetched origin/main. The requested SQLx reversal is reflected
+  in the final tree: standard SQLx facade/macros and original storage/domain sources
+  remain, with only the useful PostgreSQL ledger regression added. Regenerated the
+  deterministic source archive after final permanent docs (`release.py --skip-build`;
+  optimized binaries already verified by the full locked release build), and reran
+  the tracked-input audit/notice check. All intended implementation changes committed
+  and pushed to `feat/htlk-runtime-upgrade`. New PR:
+  https://github.com/thomasquintana/context-mcp/pull/1
+  GitHub quality workflows were IN_PROGRESS at the observed remote check; local
+  verification passes are not claimed as completed remote CI. Completion record
+  is committed/pushed with the same task-delivery workflow.
 
 ## Current next action
 
@@ -183,7 +195,6 @@ User reported updated HTLK; reviewed merged upstream PR #23 at 1e405c49. It pins
 rusqlite 0.41.1 with patched bundled SQLite, replaces affected tokio-rusqlite with
 an upstream-private connection worker, preserves public APIs/schema 13 and changes
 native/executable fingerprints. Upstream dependency/quality/line/branch CI passed.
-Commit task 6's verified permanent evidence and plan update. Then perform task 7:
-review all commits and base diff, refresh release archive for final docs, audit
-tracked inputs, push this branch, create a new PR, record its URL in this plan,
-commit/push the completion record and report actual remote CI status separately.
+All planned implementation, local verification and PR-delivery tasks are complete.
+PR #1 is open; report its URL and actual remote CI state. The paid provider campaign
+remains intentionally uninvoked, with historical evidence retained in permanent docs.

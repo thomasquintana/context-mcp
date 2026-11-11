@@ -27,13 +27,12 @@ tests, the native-host sandbox test and actual binary HTTP/stdio campaign). Addi
 checks passed fmt, strict all-target Clippy, strict rustdoc, advisory/license/source/
 dependency policy, the independent coverage-gate test, notice generation, core package
 archive verification and locked release compilation. CI workflow syntax was checked
-with actionlint1.7.12 during the original delivery. GitHub CI execution for this
-upgrade occurs after push and is distinct from these local results.
+with actionlint1.7.12, including the corrected CI workflow. GitHub CI results below
+are observed separately from these local results.
 The initial hosted coverage runs exposed the transport test's roughly ten-second
 startup allowance; its follow-up uses a finite 60-second wall-clock deadline while
 retaining actual readiness/process-exit assertions. Local targeted and full
-coverage campaigns pass with that test-only change; consult PR checks for the
-separately running hosted verification.
+coverage campaigns pass with that test-only change.
 Subsequent hosted runs passed HTTP readiness but failed a later workflow operation.
 The native adapter's separate ten-second initialization limit was reproduced with
 an eleven-second-starting peer; a bounded 30-second native allowance passes that
@@ -41,14 +40,24 @@ regression with exactly one tool dispatch and no retry. The shared transport-tes
 observer also needed a finite 60-second wall-clock allowance to cover native startup
 and local processing; its former ten-second observation window was reproduced by
 the same regression, now located in the transport suite. Transport assertions report
-their caller location, logical role and redacted HTLK failure code. Full local checks
-pass with these follow-ups; hosted results are recorded separately once observed.
+their caller location, logical role and redacted HTLK failure code.
+Slow hosted transport runs also exposed disposable bucket teardown leaving retired
+zero-byte upload fences after payload deletion. Teardown now explicitly verifies
+and removes only uploads/ content-free records in its own stopped test deployment;
+unexpected remaining payloads still fail. Production fences remain permanent.
 The subsequent hosted runs passed the full test/coverage/package stage and exposed
 an independent tool-installation error at the notice check: cargo-about 0.9.2's
 binary requires its `cli` feature. The CI install now explicitly enables that
 feature and prints the installed version. A clean pinned Rust Linux container
 reproduced the missing command with the old install, then installed cargo-about
 0.9.2 with `--features cli` and passed the unchanged locked notice comparison.
+
+Both complete hosted Linux/arm64 pipelines passed on commit `45dac37`, including
+strict checks, actual services, all coverage gates, notices, reproducible release,
+artifact upload and cleanup:
+
+- [Pull request run 43099143905](https://github.com/thomasquintana/context-mcp/actions/runs/43099143905)
+- [Push run 43099139020](https://github.com/thomasquintana/context-mcp/actions/runs/43099139020)
 
 ## Embedded HTLK upgrade
 

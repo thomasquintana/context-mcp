@@ -68,12 +68,12 @@ Initial reviewed integration target: `521f795d913ae3e13938b8ed0fe19728d2babce6`.
    both transports; accept normal sandbox destroy receipts under the existing
    provider boundary. Record exact evidence/images and failures, clean only owned
    services, update permanent docs, commit and push results to PR #1.
-9. **Observed hosted-CI startup follow-up — completed locally; hosted rerun pending.** PR's nonpaid Linux coverage
+9. **Observed hosted-CI startup follow-up — completed and verified hosted.** PR's nonpaid Linux coverage
    transport test failed after its fixed ~10-second server-readiness allowance while
    the server remained alive. Preserve all outcome assertions and use a finite
    wall-clock startup allowance suitable for instrumented hosted startup. Verify
    targeted/full transport checks and report subsequent actual remote CI separately.
-10. **Latest hosted workflow failure — in progress.** User reports CI failure after
+10. **Latest hosted workflow failure — completed and verified hosted.** User reports CI failure after
     the readiness fix. Inspect both latest runs at c44da37: startup now passes, but
     a later `succeeded` assertion hides the call site and failure code. Add useful
     redacted test diagnostics and reproduce the independent native adapter's fixed
@@ -327,6 +327,15 @@ paid-test authorization. Remove only this campaign's disposable backing services
   (workflows 728/881, engine 4370/5110, application 807/1282). One intervening local
   S3 read error did not reproduce in the targeted case or the subsequent full run;
   discarded the temporary unrelated diagnostic edit to keep the fix scoped.
+- Task 10 completed: both full hosted Linux/arm64 pipelines on 45dac37 succeeded.
+  PR run https://github.com/thomasquintana/context-mcp/actions/runs/43099143905
+  and push run https://github.com/thomasquintana/context-mcp/actions/runs/43099139020
+  each passed every step: tool install, locked build, audit, actual services, strict
+  tests/coverage/package, notice comparison, locked reproducible release, artifacts
+  and cleanup. No notice content/policy exception or application adaptation added.
+  All preceding fixes have independent failure/success reproductions. Record these
+  observed links in permanent evidence, commit/push the completion record and verify
+  the latest metadata-only head's checks before final delivery.
 
 ## Current next action
 
@@ -334,10 +343,8 @@ User reported updated HTLK; reviewed merged upstream PR #23 at 1e405c49. It pins
 rusqlite 0.41.1 with patched bundled SQLite, replaces affected tokio-rusqlite with
 an upstream-private connection worker, preserves public APIs/schema 13 and changes
 native/executable fingerprints. Upstream dependency/quality/line/branch CI passed.
-User requests focused completion. Latest hosted runs pass strict tests/coverage;
-the remaining reproduced CI failure is missing cargo-about CLI. Commit/push the
-verified --features cli install fix with current evidence, then follow hosted CI
-through success. Do not change notice content, application behavior or timeout
-settings further without a new observed failure.
+All fixes and local/hosted verification are complete. Commit/push the final observed
+CI run links and completion record, update PR #1's CI summary, and verify latest-head
+checks. Keep the notice generator/golden and all strict gates unchanged.
 Prior paid evidence remains valid; no paid rerun is required to diagnose this
 nonpaid initialization boundary unless new observed behavior justifies it.

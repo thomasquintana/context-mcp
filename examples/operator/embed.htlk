@@ -9,8 +9,8 @@ graph operator.embedding {
             inputs = { request = json }
         }
         embed = call(mcp.tool("llm", "embed"))
-        result = eval(json, { embedding = inputs.response.response.data[0].embedding, space = "text-embedding-3-small:256:v1" }) {
-            inputs = { response = json }
+        result = eval(json, { embedding = inputs.response.data.response.data[0].embedding, space = "text-embedding-3-small:256:v1" }) {
+            inputs = { response = McpToolResult }
         }
     }
     edges {

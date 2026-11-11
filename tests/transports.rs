@@ -105,10 +105,14 @@ ir_version = "0.1"
 graph acceptance.client_{role} {{
     inputs = {{ request = json }}
     outputs = {{ result = json }}
-    nodes {{ operation = call(mcp.tool("context","{tool}")) }}
+    nodes {{
+        operation = call(mcp.tool("context","{tool}"))
+        result = eval(json, inputs.response.data) {{ inputs = {{ response = McpToolResult }} }}
+    }}
     edges {{
         edge request {{ from = inputs.request to = operation.inputs.arguments }}
-        edge result {{ from = operation.outputs.value to = outputs.result }}
+        edge response {{ from = operation.outputs.value to = result.inputs.response }}
+        edge result {{ from = result.outputs.value to = outputs.result }}
     }}
     limits {{ max_mcp_calls = 1 }}
 }}
@@ -333,9 +337,11 @@ graph acceptance.stdio_roundtrip {
     outputs = { result = json }
     nodes {
         arguments = eval(json, {collection = inputs.request.collection,name = inputs.request.name,text = inputs.request.text,idempotency_key = inputs.request.idempotency_key}) {inputs = {request = json}}
-        ingest = call(mcp.tool("context","context_ingest_text"))
+        ingest_call = call(mcp.tool("context","context_ingest_text"))
+        ingest = eval(json, inputs.response.data) {inputs = {response = McpToolResult}}
         duplicate_arguments = eval(json, {collection = inputs.request.collection,name = inputs.request.name,text = inputs.request.text,idempotency_key = inputs.request.idempotency_key}) {inputs = {request = json,first = json}}
-        duplicate = call(mcp.tool("context","context_ingest_text"))
+        duplicate_call = call(mcp.tool("context","context_ingest_text"))
+        duplicate = eval(json, inputs.response.data) {inputs = {response = McpToolResult}}
         poll = loop {
             inputs = {receipt = json}
             outputs = {progress = json}
@@ -343,11 +349,13 @@ graph acceptance.stdio_roundtrip {
             body {
                 nodes {
                     arguments = eval(json, {job = inputs.receipt.job}) {inputs = {receipt = json}}
-                    inspect = call(mcp.tool("context","context_job_status"))
+                    inspect_call = call(mcp.tool("context","context_job_status"))
+                    inspect = eval(json, inputs.response.data) {inputs = {response = McpToolResult}}
                 }
                 edges {
                     edge receipt {from = carried.receipt to = arguments.inputs.receipt}
-                    edge arguments {from = arguments.outputs.value to = inspect.inputs.arguments}
+                    edge arguments {from = arguments.outputs.value to = inspect_call.inputs.arguments}
+                    edge data {from = inspect_call.outputs.value to = inspect.inputs.response}
                     edge progress {from = inspect.outputs.value to = outputs.progress}
                     edge next {from = carried.receipt to = next.receipt}
                 }
@@ -356,19 +364,23 @@ graph acceptance.stdio_roundtrip {
             max_iterations = 100
         }
         query_arguments = eval(json, {scope = {kind = "workspace",id = inputs.request.workspace},query = "transport fixture"}) {inputs = {request = json,progress = json}}
-        query = call(mcp.tool("context","context_query"))
+        query_call = call(mcp.tool("context","context_query"))
+        query = eval(json, inputs.response.data) {inputs = {response = McpToolResult}}
         result = eval(json, {admitted = inputs.admitted,duplicate = inputs.duplicate,progress = inputs.progress,context = inputs.context}) {inputs = {admitted = json,duplicate = json,progress = json,context = json}}
     }
     edges {
         edge request {from = inputs.request to = arguments.inputs.request}
-        edge arguments {from = arguments.outputs.value to = ingest.inputs.arguments}
+        edge arguments {from = arguments.outputs.value to = ingest_call.inputs.arguments}
+        edge ingest_data {from = ingest_call.outputs.value to = ingest.inputs.response}
         edge request_again {from = inputs.request to = duplicate_arguments.inputs.request}
         edge first {from = ingest.outputs.value to = duplicate_arguments.inputs.first}
-        edge duplicate_arguments {from = duplicate_arguments.outputs.value to = duplicate.inputs.arguments}
+        edge duplicate_arguments {from = duplicate_arguments.outputs.value to = duplicate_call.inputs.arguments}
+        edge duplicate_data {from = duplicate_call.outputs.value to = duplicate.inputs.response}
         edge receipt {from = duplicate.outputs.value to = poll.inputs.receipt}
         edge query_request {from = inputs.request to = query_arguments.inputs.request}
         edge progress {from = poll.outputs.progress to = query_arguments.inputs.progress}
-        edge query_arguments {from = query_arguments.outputs.value to = query.inputs.arguments}
+        edge query_arguments {from = query_arguments.outputs.value to = query_call.inputs.arguments}
+        edge query_data {from = query_call.outputs.value to = query.inputs.response}
         edge admitted {from = ingest.outputs.value to = result.inputs.admitted}
         edge duplicate {from = duplicate.outputs.value to = result.inputs.duplicate}
         edge result_progress {from = poll.outputs.progress to = result.inputs.progress}

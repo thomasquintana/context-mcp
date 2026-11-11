@@ -4,10 +4,14 @@ ir_version = "0.1"
 graph context.sandbox_create_only {
     inputs = { request = json }
     outputs = { created = json }
-    nodes { create = call(mcp.tool("sandbox", "sandbox_create")) }
+    nodes {
+        create = call(mcp.tool("sandbox", "sandbox_create"))
+        result = eval(json, inputs.response.data) { inputs = { response = McpToolResult } }
+    }
     edges {
         edge request { from = inputs.request to = create.inputs.arguments }
-        edge created { from = create.outputs.value to = outputs.created }
+        edge data { from = create.outputs.value to = result.inputs.response }
+        edge created { from = result.outputs.value to = outputs.created }
     }
     limits { max_mcp_calls = 1 }
 }

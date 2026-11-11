@@ -5,7 +5,7 @@ graph operator.cleanup {
     nodes {
         arguments = eval(json, { id = inputs.request.checkpoint.id }) { inputs = { request = json } }
         destroy = call(mcp.tool("sandbox", "sandbox_destroy"))
-        result = eval(json, { done = inputs.cleaned.destroyed == 1 }) { inputs = { cleaned = json } }
+        result = eval(json, { done = inputs.cleaned.data.destroyed == 1 }) { inputs = { cleaned = McpToolResult } }
     }
     edges {
         edge request { from = inputs.request to = arguments.inputs.request }

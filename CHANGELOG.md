@@ -6,6 +6,8 @@
   result-policy and immutable compilation-artifact interfaces. Existing HTLK SQLite
   execution databases require an explicit deployment cutover; they are not reset
   or migrated automatically.
+- Project uniform MCP tool-result envelopes explicitly in shipped operator/client
+  graphs, preserving application JSON outputs and opaque extraction checkpoints.
 
 - Deliver HTLK-owned user/agent call/upload CLI, operator provisioning/discovery/
   identity/membership/credential controls, authenticated content-resource templates,

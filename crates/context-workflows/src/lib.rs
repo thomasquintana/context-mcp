@@ -321,7 +321,8 @@ pub fn compiler(limits: &Limits) -> Result<(Compiler, NativeRegistry)> {
                 max_steps: 4_000_000,
             },
             maximum_scope_depth: 32,
-            maximum_expanded_nodes: 1000,
+            // Explicit envelope projections also expand inside bounded polling loops.
+            maximum_expanded_nodes: 2000,
         },
         limits,
     )?;

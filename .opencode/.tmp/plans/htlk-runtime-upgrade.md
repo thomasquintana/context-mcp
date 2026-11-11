@@ -37,11 +37,11 @@ Target: HTLK `521f795d913ae3e13938b8ed0fe19728d2babce6` (reviewed upstream main)
    detach owned compilation artifacts via `into_artifact()`. Review native session
    and execution defaults and fail-closed authorization. Compile workspace/examples/
    tests and run existing ordinary tests. Commit verified public-API changes.
-3. **Workflow result migration — pending.** Update 17 checked-in graphs, generated
+3. **Workflow result migration — completed.** Update 17 checked-in graphs, generated
    CLI/test graphs and role checkpoint handling. Use `McpToolResult` inputs and
    explicit `.data` projection into application JSON. Preserve exit/destroy checks,
    loop results and cleanup checkpoint shape. Compile all shipped graphs against
-   exact fixture catalogs; verify representative result sizes and failure behavior.
+   exact fixture catalogs; task 5 executes result-size and failure regressions.
 4. **Data-preserving cutover — pending.** Document deployment/workflow-host
    procedure, active jobs/cleanup/purge settlement, pending uploads and legacy retry
    restrictions. Verify incompatible stores stay unchanged and same-version reopen
@@ -88,7 +88,16 @@ paid-test authorization. Remove only this campaign's disposable backing services
   Dependency graph removes unused upstream SDK/parser dependencies; notices refresh
   remains task 6. New native client lifetime owner bound (4096 by default) must be
   documented/checked during task 5; retired transport capacity is separate.
+- Task 3: migrated all 17 shipped graphs and generated CLI/transport/native-host
+  graphs to explicit envelope projections. Extraction retains `create` as a JSON
+  projection checkpoint, preserving cleanup shape and operator checkpoint config.
+  Added a compiler regression over all shipped graphs with explicit fixture-only
+  provider descriptors plus actual exported context descriptors. It caught the
+  diagnostic compiler's 1000-node expansion bound after adding projections inside
+  two 200-iteration loops; raised that finite bound to 2000. The graph suite,
+  all 10 ordinary workflow tests and fmt pass. Runtime edge/failure/large-result
+  checks remain task 5, distinct from this compile compatibility evidence.
 
 ## Current next action
 
-Commit verified task 2, then migrate graph envelopes in task 3.
+Commit verified task 3, then document/test execution-state cutover in task 4.

@@ -168,10 +168,14 @@ ir_version = "0.1"
 graph acceptance.metadata {
     inputs = { request = json }
     outputs = { result = json }
-    nodes { list = call(mcp.tool("sandbox","sandbox_list")) }
+    nodes {
+        list = call(mcp.tool("sandbox","sandbox_list"))
+        result = eval(json, inputs.response.data) { inputs = { response = McpToolResult } }
+    }
     edges {
         edge request { from = inputs.request to = list.inputs.arguments }
-        edge result { from = list.outputs.value to = outputs.result }
+        edge response { from = list.outputs.value to = result.inputs.response }
+        edge result { from = result.outputs.value to = outputs.result }
     }
     limits { max_mcp_calls = 1 }
 }

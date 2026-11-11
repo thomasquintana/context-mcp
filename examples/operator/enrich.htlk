@@ -10,7 +10,7 @@ graph operator.enrich {
             max_output_tokens = 2048, store = false
         }) { inputs = { request = json } }
         generate = call(mcp.tool("llm", "generate"))
-        result = eval(json, { document = { encoding = "json_text", value = inputs.response.output[0].content[0].text } }) { inputs = { response = json } }
+        result = eval(json, { document = { encoding = "json_text", value = inputs.response.data.output[0].content[0].text } }) { inputs = { response = McpToolResult } }
     }
     edges {
         edge request { from = inputs.request to = arguments.inputs.request }

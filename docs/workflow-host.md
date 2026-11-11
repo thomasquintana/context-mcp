@@ -25,6 +25,19 @@ authorized job records before launching execution. Changing executable policies 
 removing required old role revisions requires draining/migrating those jobs through
 an explicit supported deployment procedure.
 
+The HTLK `521f795d` upgrade requires a fresh schema-13 execution store after old
+work is fully settled; schema-6 stores cannot be reopened. See the retained-data
+[cutover procedure](deployment.md#upgrading-the-embedded-htlk-runtime), including
+pending uploads, cleanup and legacy retry restrictions. There is no automatic
+cross-version run migration or fingerprint substitution.
+
+Tool calls return native `McpToolResult` envelopes. Operator graphs accept those
+typed responses and explicitly project their selected `.data` into role JSON.
+Required data must be present; HTLK's default declared-schema enforcement remains
+enabled. `extract.htlk` keeps the declared `create` checkpoint as a JSON projection
+with the original opaque `id`, so the cleanup role receives its existing shape.
+Raw envelopes/evidence are retained by HTLK, not copied into published knowledge.
+
 ## Trusted job authority
 
 Application grants also freeze exact role fingerprints; startup rejects a retained

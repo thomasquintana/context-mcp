@@ -97,6 +97,54 @@ role revisions/index credential references until unfinished work and retained ma
 collections are cleaned. Store/bucket migrations must move managed data and maintain
 the purge policy; versioned payload storage is rejected.
 
+## Upgrading the embedded HTLK runtime
+
+The upgrade from HTLK `3448acb5` to `521f795d` changes its private SQLite schema
+from 6 to 13 and changes executable/native implementation fingerprints. The new
+runtime rejects old execution databases; startup never migrates, deletes or resets
+them. PostgreSQL application records, payload storage and the derived search index
+remain separate. Use a maintenance cutover for retained application data:
+
+1. Keep the old binary/image, configuration, catalogs and processing profiles
+   available. Stop new user/agent admission at the deployment boundary while the old
+   instance's workers and maintenance finish existing work. Allow authenticated
+   status/cancellation/finalization as needed to settle already accepted operations.
+2. Under the old instance, finish or cancel active jobs and wait for cleanup to
+   settle. Complete pending purges and unpublished-stage cleanup. Resolve existing
+   uploads by finalizing them before the admission freeze or letting them expire
+   and retire under the existing conditional-PUT fencing procedure. Wait for tracked
+   URL acquisitions and transient requests to settle. A terminal job with pending
+   cleanup, an unresolved run intent or an unconfirmed cleanup receipt blocks cutover.
+3. Stop the old instance gracefully. Inspect authoritative operational state while
+   it is stopped: no accepted/running jobs, active workflow authorities, pending
+   purge/cleanup work, unresolved uploads/acquisitions or private job staging may
+   require the old execution store. If any remains, resume the old instance and
+   settle it; do not edit authority, stage handles or fingerprints to bypass it.
+4. Preserve the stopped deployment's old SQLite database and any associated WAL/SHM
+   files together with its exact binary/configuration. Retain this protected history
+   for inspection with that matching binary; it stays outside application purge scope.
+   Select a **new, unused** `application.workflows.database` path for schema 13.
+   Keep PostgreSQL, S3, Typesense and permanent zero-byte upload fences intact.
+5. Install the upgraded operator graphs and exact provider catalogs. Keep model/space
+   identities consistent with retained vectors. Start the one upgraded instance and
+   verify readiness, authorized reads of existing published evidence/memory, and new
+   upload/processing/query/purge operations. A same-version restart reuses its new
+   store and saved handles normally.
+
+Frozen legacy failed/cancelled jobs cannot use `context_retry_job` with newly compiled
+role fingerprints. The request is rejected rather than retargeted. Previously saved
+idempotency receipts can still return their original control result; they do not
+resume work. For a published source, explicitly request `context_reprocess` with its
+expected current revision; otherwise explicitly resubmit original bytes/text or an
+exact URL as a new operation with a new key. Never implicitly regenerate purged data.
+
+A rollback before any new admissions can restore the old binary/configuration and
+old database path after stopping the upgraded instance. After new work has been
+accepted, first settle it under its matching runtime and review all retained workflow
+selections before rollback. Mixing old/new handles or copying private HTLK tables is
+not a supported migration. Disposable test deployments may be recreated explicitly;
+that is a separate choice from this retained-data procedure.
+
 ## User and agent CLI
 
 Load the bearer into `CONTEXT_TOKEN` (or use `--token-env` to select another reference).

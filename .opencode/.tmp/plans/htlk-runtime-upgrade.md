@@ -42,7 +42,7 @@ Target: HTLK `521f795d913ae3e13938b8ed0fe19728d2babce6` (reviewed upstream main)
    explicit `.data` projection into application JSON. Preserve exit/destroy checks,
    loop results and cleanup checkpoint shape. Compile all shipped graphs against
    exact fixture catalogs; task 5 executes result-size and failure regressions.
-4. **Data-preserving cutover — pending.** Document deployment/workflow-host
+4. **Data-preserving cutover — completed.** Document deployment/workflow-host
    procedure, active jobs/cleanup/purge settlement, pending uploads and legacy retry
    restrictions. Verify incompatible stores stay unchanged and same-version reopen
    remains idempotent. Add only narrowly necessary diagnostics, with no new adapters.
@@ -97,7 +97,14 @@ paid-test authorization. Remove only this campaign's disposable backing services
   two 200-iteration loops; raised that finite bound to 2000. The graph suite,
   all 10 ordinary workflow tests and fmt pass. Runtime edge/failure/large-result
   checks remain task 5, distinct from this compile compatibility evidence.
+- Task 4: documented maintenance cutover, old-state settlement, new schema-13 path,
+  protected historical-store retention, legacy retries/receipts, explicit resubmission
+  and rollback boundary. Added independent Python-SQLite legacy-header/sentinel
+  fixture; public HTLK runner rejects it with StoreError::Schema and leaves the
+  database byte-for-byte unchanged. All five public-runtime tests and production
+  terminal-run same-version reopen test pass; diff check and fmt pass. No operator
+  migration tool or private-runtime-table copy added, and no deployment state touched.
 
 ## Current next action
 
-Commit verified task 3, then document/test execution-state cutover in task 4.
+Commit verified task 4, then focused/native and actual-service verification in task 5.

@@ -118,7 +118,26 @@ paid-test authorization. Remove only this campaign's disposable backing services
   No model calls were made. Native owner's lifetime bound documented, no new
   mechanism or fence-reset workaround introduced. Disposable services stay up for
   task 6 coverage, then stop only context-mcp-ci.
+- Task 6 is blocked by the current advisory gate, not by a failed functional test.
+  `tools/verify.py --coverage` passed fmt/Clippy then stopped before coverage on:
+  RUSTSEC-2026-0459 (`libsqlite3-sys` 0.35.0 via HTLK's tokio-rusqlite 0.7.0 /
+  rusqlite 0.37.0) and RUSTSEC-2026-0462 (context-mcp rmcp 3.8.0).
+  Native HTLK client replaced rmcp; local rmcp server features do not enable the
+  advisory's HTTP clients, but the package-level gate still fails. Plan a direct
+  local rmcp >=3.9.0 update rather than an advisory ignore.
+  Upstream HTLK main remains 521f795d. User requested a Markdown handoff prompt for
+  a different agent to fix HTLK; sibling modification was NOT authorized here.
+  Patched SQLite requires libsqlite3-sys >=0.39.0 / rusqlite >=0.41 (SQLite >=3.54).
+  Registry check: latest tokio-rusqlite 0.8.0 still requires rusqlite ^0.40.1, so
+  merely updating tokio-rusqlite is not an established fix. The handoff must resolve
+  this upstream dependency boundary without an unapproved fork/shim or ignore.
+  Notices regenerated and `tools/notices.py --check` passed for the current lock;
+  tracked release audit passed. Coverage/release/package are NOT yet verified for
+  this branch. Stop only this task's context-mcp-ci stack while awaiting handoff.
 
 ## Current next action
 
-Commit verified task 5; refresh notices/evidence and run full task 6 release gates.
+Provide the requested HTLK SQLite handoff prompt; await a verified patched upstream
+revision. Resume task 6 with that pin and a local rmcp update, regenerate notices,
+reprovision the same isolated services, rerun functional and full coverage/release
+checks, update measured docs, then finish task 7 and open the context-mcp PR.

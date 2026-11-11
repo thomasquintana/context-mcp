@@ -48,17 +48,23 @@ impl Drop for Process {
 }
 
 async fn result(host: &WorkflowHost, handle: &Handle) -> State {
-    for _ in 0..500 {
+    // Observation must cover the native client's bounded provider initialization
+    // plus local processing; a ten-second poll loop races slow stdio startup.
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    while std::time::Instant::now() < deadline {
         match host.inspect(handle).await {
             Ok(State::Running) => {}
             Ok(state) => return state,
             Err(context_workflows::host::Error::Runtime(error))
                 if error.code() == htlk::runtime::failure::FailureCode::Fenced => {}
-            _ => panic!("unexpected transport workflow failure"),
+            Err(error) => panic!("transport role {} inspection failed: {error}", handle.role),
         }
         actix::clock::sleep(Duration::from_millis(20)).await;
     }
-    panic!("transport workflow deadline exceeded")
+    panic!(
+        "transport workflow deadline exceeded for role {}",
+        handle.role
+    )
 }
 
 async fn call(host: &WorkflowHost, job: JobId, role: &str, request: Value) -> State {
@@ -156,6 +162,39 @@ graph acceptance.content_resource {
     roles.insert("read_resource".into(),json!({"source":"client-read-resource.htlk","catalogs":dir.join(format!("context-{transport}.json"))}));
     serde_json::from_value(json!({"database":format!("{name}.sqlite"),"roles":roles,
         "endpoints":{"context-mcp":endpoint},"required_deployments":["context-mcp"],"workers":2,"max_runs":8})).unwrap()
+}
+
+#[test]
+fn slow_stdio_startup_preserves_the_first_operation_without_retry() {
+    actix::System::new().block_on(async {
+        let dir = tempfile::tempdir().unwrap();
+        let peer = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("crates/context-workflows/tests/fixtures/envelope_peer.py");
+        let config = client_config(dir.path(), "slow-start", json!({
+            "transport":"stdio", "program":"python3",
+            "arguments":[peer,dir.path().join("context-stdio.json"),dir.path().join("dispatch.jsonl")],
+            "environment":{"FIXTURE_STARTUP_DELAY_MS":"11000"},
+        }), "stdio");
+        let mut catalog = context_mcp::mcp::catalog("stdio");
+        for inventory in ["tools", "resources"] {
+            catalog[inventory]["servers"]["context"]["implementation_name"] = json!("envelope-fixture");
+            catalog[inventory]["servers"]["context"]["implementation_version"] = json!("1");
+        }
+        write(&dir.path().join("context-stdio.json"), &catalog);
+        let host = WorkflowHost::open(&config, dir.path(), &[]).await.unwrap();
+        let grant = JobGrant {
+            job:JobId::new(), principal:context_core::ids::PrincipalId::new(),
+            tenant:context_core::ids::TenantId::new(), assets:BTreeSet::new(),
+            roles:config.roles.keys().cloned().collect(), fingerprints:Default::default(), fenced:false,
+        };
+        host.grant_job(grant.clone()).unwrap();
+        assert_eq!(succeeded(call(&host, grant.job, "identity", json!({})).await),
+            json!({"marker":"independent literal evidence"}));
+        host.shutdown().await.unwrap();
+        let facts = std::fs::read_to_string(dir.path().join("dispatch.jsonl")).unwrap();
+        let dispatches:Vec<Value> = facts.lines().map(|line|serde_json::from_str(line).unwrap()).collect();
+        assert_eq!(dispatches, vec![json!({"name":"context_identity","case":"success"})]);
+    });
 }
 
 #[test]

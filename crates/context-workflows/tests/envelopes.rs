@@ -105,41 +105,6 @@ async fn settled(host: &WorkflowHost, handle: &Handle) -> State {
 }
 
 #[test]
-fn slow_native_startup_preserves_the_first_operation_without_retry() {
-    let (directory, mut config, grant) = fixture();
-    let context_workflows::Endpoint::Stdio { environment, .. } =
-        config.endpoints.get_mut("fixture").unwrap()
-    else {
-        panic!("expected fixture stdio endpoint")
-    };
-    environment.insert("FIXTURE_STARTUP_DELAY_MS".into(), "11000".into());
-    actix::System::new().block_on(async {
-        let host = WorkflowHost::open(&config, directory.path(), &[])
-            .await
-            .unwrap();
-        host.grant_job(grant.clone()).unwrap();
-        let handle = host
-            .start(grant.job, "inspect", &json!({}), "slow-start")
-            .await
-            .unwrap();
-        match settled(&host, &handle).await {
-            State::Succeeded(value) => {
-                assert_eq!(value, json!({"marker":"independent literal evidence"}))
-            }
-            State::Failed(code) => panic!("slow startup rejected the first operation: {code}"),
-            _ => panic!("unexpected slow-start operation outcome"),
-        }
-        host.shutdown().await.unwrap();
-        let facts = std::fs::read_to_string(directory.path().join("dispatch.jsonl")).unwrap();
-        let dispatches: Vec<Value> = facts
-            .lines()
-            .map(|line| serde_json::from_str(line).unwrap())
-            .collect();
-        assert_eq!(dispatches, vec![json!({"name":"inspect","case":"success"})]);
-    });
-}
-
-#[test]
 fn required_data_errors_large_results_and_offline_reopen_preserve_dispatch_facts() {
     let (directory, config, grant) = fixture();
     actix::System::new().block_on(async {

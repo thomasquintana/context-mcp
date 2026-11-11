@@ -269,6 +269,27 @@ paid-test authorization. Remove only this campaign's disposable backing services
   push this targeted verified fix, then run the full nonpaid/coverage/release gates
   and follow hosted CI to success; the exact hosted phase remains to be confirmed
   by the improved diagnostic or a passing full run.
+- Hosted 2e4f194 reruns still failed: the failure changed from a terminal workflow
+  failure to the test observer's own `transport workflow deadline exceeded` at
+  result() after its 500x20-ms poll allowance. Thus the observation budget also
+  needs to cover the now-bounded native startup. Replace result polling with a
+  finite 60-second wall-clock deadline and report the logical role on inspection/
+  timeout failures. Do not confuse observer timeout with a failed provider result.
+- Moved the slow-start regression into tests/transports.rs so it exercises the
+  actual shared call/result observer as well as the real native host. The fixture
+  delay is still 11 seconds, and its independent dispatch log must contain exactly
+  one context_identity call. A temporary 10-second observer deadline reproduces
+  `transport workflow deadline exceeded for role identity`; the 60-second observer
+  passes the identical case. Strict Clippy/fmt pass. This is one moved regression,
+  not an additional test; total nonpaid Rust tests remains 53. Push this follow-up
+  and re-run local gates/hosted checks, keeping both native and observer bounds.
+- Task 10 full local verification passes with the native-startup fix: locked build,
+  all 53 nonpaid Rust tests (new slow-start regression), fmt/Clippy/rustdoc,
+  dependency/advisory/license/source gates, unchanged coverage floors/uncovered
+  budgets, coverage checker and core package. Latest workflow coverage is 728/881
+  (82.63%); application coverage remains 805/1282 (62.79%). Hosted runs on 2e4f194
+  are in progress; do not stop at local success or repeat the earlier unobserved
+  hosted-success assumption. Finish release/audit/notices and watch GitHub result.
 
 ## Current next action
 

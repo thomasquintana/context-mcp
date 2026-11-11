@@ -8,8 +8,8 @@ use context_storage::Error;
 use context_storage::postgres::{
     Database, claim_job, existing_receipt, insert_resource, publish_revision, receipt,
 };
-use context_storage::sql::{self as sqlx, Row};
 use serde_json::json;
+use sqlx::Row;
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
@@ -29,7 +29,7 @@ async fn database() -> Database {
 
 #[tokio::test]
 #[ignore = "requires CONTEXT_TEST_DATABASE_URL pointing at isolated PostgreSQL"]
-async fn embedded_migrator_reopens_the_original_sqlx_ledger_without_reapplying() {
+async fn sqlx_macro_reopens_directory_migration_ledger_without_reapplying() {
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(1)
         .connect(&std::env::var("CONTEXT_TEST_DATABASE_URL").expect("isolated PostgreSQL"))

@@ -3,7 +3,6 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use context_core::{access::Permission, ids::PrincipalId};
 use context_mcp::{config::Config, transport::Result};
-use context_storage::sql as sqlx;
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},

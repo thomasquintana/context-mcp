@@ -1,6 +1,5 @@
 //! PostgreSQL authority with explicit transactions and permission-chain hydration.
 
-use crate::sql::{self as sqlx, PgPool, Postgres, Row, Transaction, postgres::PgPoolOptions};
 use crate::{Error, Result};
 use context_core::{
     access::{AccessContext, AccessNode, Grant, Permission, Recipient, Resource},
@@ -8,6 +7,7 @@ use context_core::{
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use sqlx::{PgPool, Postgres, Row, Transaction, postgres::PgPoolOptions};
 use std::{collections::BTreeSet, time::Duration};
 use uuid::Uuid;
 
@@ -41,7 +41,7 @@ impl Database {
             })
             .connect(url)
             .await?;
-        migrations().run(&pool).await?;
+        sqlx::migrate!("./migrations").run(&pool).await?;
         Ok(Self { pool })
     }
 
@@ -110,75 +110,6 @@ impl Database {
     pub async fn close(&self) {
         self.pool.close().await;
     }
-}
-
-fn migrations() -> sqlx::migrate::Migrator {
-    use sqlx_core::{
-        migrate::{Migration, MigrationType, Migrator},
-        sql_str::SqlStr,
-    };
-
-    let sources = [
-        (
-            1,
-            "authority",
-            include_str!("../migrations/0001_authority.sql"),
-        ),
-        (
-            2,
-            "application records",
-            include_str!("../migrations/0002_application_records.sql"),
-        ),
-        (
-            3,
-            "upload processing",
-            include_str!("../migrations/0003_upload_processing.sql"),
-        ),
-        (
-            4,
-            "stage intents",
-            include_str!("../migrations/0004_stage_intents.sql"),
-        ),
-        (
-            5,
-            "upload receipts",
-            include_str!("../migrations/0005_upload_receipts.sql"),
-        ),
-        (
-            6,
-            "staged ownership",
-            include_str!("../migrations/0006_staged_ownership.sql"),
-        ),
-        (
-            7,
-            "acquisition",
-            include_str!("../migrations/0007_acquisition.sql"),
-        ),
-        (
-            8,
-            "purge worklists",
-            include_str!("../migrations/0008_purge_worklists.sql"),
-        ),
-        (
-            9,
-            "receipt key privacy",
-            include_str!("../migrations/0009_receipt_key_privacy.sql"),
-        ),
-    ];
-    Migrator::with_migrations(
-        sources
-            .into_iter()
-            .map(|(version, description, sql)| {
-                Migration::new(
-                    version,
-                    description.into(),
-                    MigrationType::Simple,
-                    SqlStr::from_static(sql),
-                    false,
-                )
-            })
-            .collect(),
-    )
 }
 
 /// Typed resource to database identity conversion.
@@ -440,26 +371,4 @@ pub async fn collection_scope(
         })
         .ok_or(Error::Invalid)?;
     Ok((workspace, chain[0].owner))
-}
-
-#[cfg(test)]
-mod tests {
-    #[tokio::test]
-    async fn embedded_migrations_match_sqlx_directory_versions_and_checksums() {
-        let embedded = super::migrations();
-        let directory = super::sqlx::migrate::Migrator::new(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations"),
-        )
-        .await
-        .unwrap();
-        assert_eq!(embedded.migrations.len(), directory.migrations.len());
-        for (embedded, original) in embedded.iter().zip(directory.iter()) {
-            assert_eq!(embedded.version, original.version);
-            assert_eq!(embedded.description, original.description);
-            assert_eq!(embedded.migration_type, original.migration_type);
-            assert_eq!(embedded.sql.as_str(), original.sql.as_str());
-            assert_eq!(embedded.checksum, original.checksum);
-            assert_eq!(embedded.no_tx, original.no_tx);
-        }
-    }
 }

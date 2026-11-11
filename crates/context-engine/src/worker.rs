@@ -11,12 +11,12 @@ use context_core::{
     content::{Origin, SourceReference},
     ids::{AssetId, ContentId, JobId, PrincipalId, RevisionId, TenantId, WorkspaceId},
 };
-use context_storage::sql::{self as sqlx, Row};
 use context_storage::{postgres::publish_revision, search::SearchDocument};
 use context_workflows::host::{Handle, State};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use sqlx::Row;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,

@@ -147,6 +147,23 @@ paid-test authorization. Remove only this campaign's disposable backing services
   workspace build/check, strict Clippy, advisory/license/source/bans, notice check,
   release audit and diff check pass. The isolated alternate-port services are up
   again for final task 6 coverage/release and final-pin native verification.
+- User correction: undo the PostgreSQL-only SQLx removal and use SQLx with its
+  upstream fix. The earlier SQLx-core/driver module, manual migration manifest and
+  import refactor are superseded and being reversed in a new commit (retain the
+  verified HTLK/rmcp security pins). Official merged SQLx PR #4502 at
+  `10462fa4414c6c7f1ed1d39bb31678e3b726878c` permits libsqlite3-sys 0.39.x; no 0.9.1
+  release is available, so pin the standard SQLx facade to that exact upstream Git
+  revision and explicitly allow only that upstream source. Restore `sqlx::migrate!`
+  and direct `sqlx` imports; keep the useful actual-PostgreSQL ledger reopen test.
+  Prior direct-driver full coverage run passed 53 tests and unchanged floors, and
+  final-HTLK native formats passed 28+4 cases under `formats-hnl2i5wt`; the SQLx
+  configuration change requires a new final coverage/service run before delivery.
+- SQLx correction verified: restored standard facade, original query imports and
+  migration macro; removed direct-driver reexport module/manual manifest. Exact
+  official upstream 10462fa4 pin resolves with HTLK's libsqlite3-sys 0.39.1.
+  Locked workspace check, all 25 ordinary tests and actual PostgreSQL macro/ledger
+  reopen pass; strict advisory/license/source/bans and regenerated notice check pass.
+  Final full coverage/release campaign remains pending for this corrected graph.
 
 ## Current next action
 
@@ -154,12 +171,8 @@ User reported updated HTLK; reviewed merged upstream PR #23 at 1e405c49. It pins
 rusqlite 0.41.1 with patched bundled SQLite, replaces affected tokio-rusqlite with
 an upstream-private connection worker, preserves public APIs/schema 13 and changes
 native/executable fingerprints. Upstream dependency/quality/line/branch CI passed.
-Cargo then exposed SQLx 0.9.0's unused optional SQLite-driver native-links conflict.
-User explicitly approved using PostgreSQL-only exact-version SQLx core/driver crates
-and its public embedded-migration API. Shared SQLx reexports live in context-storage;
-services keep upstream query/transaction types, with no SQL/authority semantics change.
-The migration manifest must retain all original version/description/SQL/checksum facts
-and be independently compared to SQLx's directory loader; actual services verify reopen.
-Commit the verified dependency-unblock subtask. Run full coverage/release and native
-format checks against the final pin, update measured docs, then finish task 7 and
-open the context-mcp PR.
+Follow latest user direction: reverse PostgreSQL-only SQLx changes and pin the
+standard SQLx facade to official merged PR #4502. Verify/commit this scoped reversal
+and fix; then rerun full coverage/service/release checks, update measured docs and
+finish task 7 with a new context-mcp PR. Native formats on the final HTLK revision
+already passed; SQLx does not participate in the independent native host campaign.

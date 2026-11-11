@@ -8,9 +8,7 @@ pub mod authorization;
 pub mod blobs;
 pub mod postgres;
 pub mod search;
-pub mod sql;
 
-use crate::sql as sqlx;
 use std::{error::Error as StdError, fmt};
 
 /// Redacted storage boundary failures. Backend details are available only as causes.

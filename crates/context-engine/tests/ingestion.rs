@@ -8,7 +8,6 @@ use context_core::{
 };
 use context_engine::{Application, Config, bootstrap};
 use context_storage::postgres::Database;
-use context_storage::sql::{self as sqlx, Row};
 use futures_util::TryStreamExt;
 use object_store::{
     ObjectStore, ObjectStoreExt,
@@ -18,6 +17,7 @@ use object_store::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use sqlx::Row;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use uuid::Uuid;
 

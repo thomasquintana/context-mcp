@@ -8,9 +8,9 @@
   or migrated automatically.
 - Resolve the SQLite and MCP SDK advisory blockers through upstream HTLK's patched
   bundled SQLite dependency and rmcp 3.9.0, preserving strict dependency gates.
-- Use exact-version PostgreSQL-only SQLx crates to avoid an unused SQLite-driver
-  resolution conflict. Preserve embedded migration versions, SQL and checksums with
-  SQLx's migration API and verify them against its original directory loader.
+- Pin the standard SQLx facade to upstream PR #4502's exact Git revision, permitting
+  patched SQLite 0.39.x during dependency resolution. Retain SQLx's existing macros,
+  application queries and embedded migration execution.
 - Project uniform MCP tool-result envelopes explicitly in shipped operator/client
   graphs, preserving application JSON outputs and opaque extraction checkpoints.
 - Verify envelope failure/large-result handling, offline evidence and fenced cleanup

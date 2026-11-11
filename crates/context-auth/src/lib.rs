@@ -10,7 +10,6 @@ use context_core::{
     ids::{CredentialId, PrincipalId},
 };
 use context_storage::postgres::Database;
-use context_storage::sql::{self as sqlx, Row};
 use futures_util::TryStreamExt;
 use jsonwebtoken::{
     Algorithm, DecodingKey, Validation, decode, decode_header,
@@ -20,6 +19,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use sqlx::Row;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,

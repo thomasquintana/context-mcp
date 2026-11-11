@@ -18,8 +18,8 @@ thiserror = "2"
 uuid = { version = "1", features = ["serde", "v7"] }
 actix = "=0.13.5"
 htlk = { version = "=0.1.0", git = "https://github.com/thomasquintana/htlk.git", rev = "1e405c495fc2e9b3b3fb812123f509178b08a9e5" }
-sqlx-core = { version = "=0.9.0", default-features = false, features = ["_rt-tokio", "_tls-rustls-aws-lc-rs", "json", "migrate"] }
-sqlx-postgres = { version = "=0.9.0", default-features = false, features = ["uuid", "json", "migrate"] }
+# Upstream PR #4502 permits patched SQLite 0.39.x; not yet released on crates.io.
+sqlx = { version = "=0.9.0", git = "https://github.com/launchbadge/sqlx.git", rev = "10462fa4414c6c7f1ed1d39bb31678e3b726878c", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "json", "migrate", "macros"] }
 tokio = { version = "=1.53.3", features = ["rt-multi-thread", "macros", "fs", "io-util", "net", "sync", "time", "signal"] }
 sha2 = "=0.10.9"
 object_store = { version = "=0.14.2", default-features = false, features = ["aws"] }
@@ -78,6 +78,7 @@ tempfile = "3"
 reqwest.workspace = true
 sha2.workspace = true
 mime_guess = "=2.0.5"
+sqlx.workspace = true
 tower = { version = "0.5", features = ["limit"] }
 
 [dev-dependencies]

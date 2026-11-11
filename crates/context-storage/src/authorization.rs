@@ -1,12 +1,12 @@
 //! Shared authorization/data snapshots, preventing mixed-time membership/grant checks.
 
-use crate::sql::{self as sqlx, Postgres, Transaction};
 use crate::{
     Error, Result,
     postgres::{Database, chain_in, context_in, resource_id},
 };
 use context_core::access::{AccessContext, Authentication, Permission, Resource};
 use serde_json::Value;
+use sqlx::{Postgres, Transaction};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 

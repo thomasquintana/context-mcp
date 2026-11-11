@@ -9,7 +9,6 @@ use context_core::{
     access::{Authentication, Permission, Resource},
     ids::{ContentId, JobId},
 };
-use context_storage::sql as sqlx;
 use context_workflows::host::{JobGrant, State};
 use serde_json::Value;
 use std::{

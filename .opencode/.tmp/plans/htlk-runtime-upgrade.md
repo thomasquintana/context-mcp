@@ -311,6 +311,22 @@ paid-test authorization. Remove only this campaign's disposable backing services
   passes (72.22 seconds); locked all-target check, fmt and strict Clippy pass.
   Added only the already-resolved futures-util dev dependency for stream collection.
   Push this verified cleanup fix and follow the full hosted pipeline again.
+- Hosted 68c96e4 runs pass the entire strict/test/coverage/package step. The next
+  notice step fails immediately. Reproducing CI's exact `cargo install cargo-about
+  --version 0.9.2 --locked` in a clean pinned Rust Linux image confirms it installs
+  no executable: cargo reports that bin cargo-about requires feature `cli`, and
+  `cargo about --version` fails with "no such command: about". This is NOT an
+  established notice-content/platform mismatch. Fix CI install with `--features
+  cli` and immediately print its version; retain the existing unchanged notice
+  generator and golden. Verify the actual Linux notice comparison before pushing.
+- Notice fix verified in the same clean pinned Rust Linux image: install with
+  `--locked --features cli` produces executable cargo-about 0.9.2; running the
+  unchanged `python3 tools/notices.py --check` against a read-only checkout passes.
+  The notice golden, generator and target-selection policy need no changes.
+  Latest local full 53-test campaign passes with all original coverage budgets
+  (workflows 728/881, engine 4370/5110, application 807/1282). One intervening local
+  S3 read error did not reproduce in the targeted case or the subsequent full run;
+  discarded the temporary unrelated diagnostic edit to keep the fix scoped.
 
 ## Current next action
 
@@ -318,8 +334,10 @@ User reported updated HTLK; reviewed merged upstream PR #23 at 1e405c49. It pins
 rusqlite 0.41.1 with patched bundled SQLite, replaces affected tokio-rusqlite with
 an upstream-private connection worker, preserves public APIs/schema 13 and changes
 native/executable fingerprints. Upstream dependency/quality/line/branch CI passed.
-User reports latest CI failure. Follow task 10: commit/push the reproduced native
-startup fix and improved transport diagnostics, verify all local nonpaid/coverage/
-release gates, update measured evidence, and wait for actual hosted CI success.
+User requests focused completion. Latest hosted runs pass strict tests/coverage;
+the remaining reproduced CI failure is missing cargo-about CLI. Commit/push the
+verified --features cli install fix with current evidence, then follow hosted CI
+through success. Do not change notice content, application behavior or timeout
+settings further without a new observed failure.
 Prior paid evidence remains valid; no paid rerun is required to diagnose this
 nonpaid initialization boundary unless new observed behavior justifies it.

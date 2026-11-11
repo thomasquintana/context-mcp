@@ -21,7 +21,7 @@ Fixture service credentials are public development values. Configure the
 `CONTEXT_TEST_*` references to use existing isolated services; the scripts do not
 print token/model-secret values. Paid cases are explicitly excluded by name.
 
-The 2026-11-11 upgrade campaign passed 52 Rust tests: 25 regular tests and 27 opt-in actual
+The 2026-11-11 upgrade campaign passed 53 Rust tests: 26 regular tests and 27 opt-in actual
 service/transport tests (including 13 application campaigns, 10 storage tests, 2 identity
 tests, the native-host sandbox test and actual binary HTTP/stdio campaign). Additional
 checks passed fmt, strict all-target Clippy, strict rustdoc, advisory/license/source/
@@ -34,6 +34,21 @@ startup allowance; its follow-up uses a finite 60-second wall-clock deadline whi
 retaining actual readiness/process-exit assertions. Local targeted and full
 coverage campaigns pass with that test-only change; consult PR checks for the
 separately running hosted verification.
+Subsequent hosted runs passed HTTP readiness but failed a later workflow operation.
+The native adapter's separate ten-second initialization limit was reproduced with
+an eleven-second-starting peer; a bounded 30-second native allowance passes that
+regression with exactly one tool dispatch and no retry. The shared transport-test
+observer also needed a finite 60-second wall-clock allowance to cover native startup
+and local processing; its former ten-second observation window was reproduced by
+the same regression, now located in the transport suite. Transport assertions report
+their caller location, logical role and redacted HTLK failure code. Full local checks
+pass with these follow-ups; hosted results are recorded separately once observed.
+The subsequent hosted runs passed the full test/coverage/package stage and exposed
+an independent tool-installation error at the notice check: cargo-about 0.9.2's
+binary requires its `cli` feature. The CI install now explicitly enables that
+feature and prints the installed version. A clean pinned Rust Linux container
+reproduced the missing command with the old install, then installed cargo-about
+0.9.2 with `--features cli` and passed the unchanged locked notice comparison.
 
 ## Embedded HTLK upgrade
 
@@ -72,11 +87,11 @@ attributes or test-only behavior are used.
 | --- | --- | --- |
 | context-core |210 /233|90.13%|
 | context-storage |916 /1001|91.51%|
-| context-workflows |726 /881|82.41%|
+| context-workflows |728 /881|82.63%|
 | context-auth |397 /421|94.30%|
 | context-engine |4370 /5110|85.52%|
 | context-process |199 /737|27.00%|
-| context-mcp |805 /1282|62.79%|
+| context-mcp |807 /1282|62.95%|
 
 The goal remains 99% meaningful production line coverage; it is **not yet reached**.
 CI enforces measured per-crate floors and uncovered-line budgets in
@@ -109,7 +124,7 @@ as covered lines. Raw JSON is written to target/coverage/coverage.json.
   attempt stopped before ingestion because the old fixture reused a retained 3-D
   collection identity for the real model space; the corrected test allocates a
   distinct model collection. Production index-identity protections remain intact.
-  This is one additional opt-in paid Rust test, separate from the 52-test nonpaid
+  This is one additional opt-in paid Rust test, separate from the 53-test nonpaid
   coverage campaign and the container journey; its uninstrumented execution is not
   added to the coverage measurements above.
 

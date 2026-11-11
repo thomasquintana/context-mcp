@@ -19,7 +19,7 @@ claim needs observed evidence; fixture coverage cannot establish provider behavi
 | A12 | Revisioned memory, concurrent reconciliation and cited synthesis | Actual application history/equivalence/complement/conflict/version/authority/citation/save tests plus real model contradiction preservation and saved cited synthesis |
 | A13 | Revocation and app-managed purge across storage, history and temporary files | Actual cross-owner physical purge/restart, S3/index/staging cleanup, source revocation, paused late PUT fences, versioned-bucket refusal and live both-transport purge |
 | A14 | Provider replacement through graphs/catalogs/bindings | Generic fixed-contract host and operator-only provider schemas; alternate pure role configurations and both required actual providers run without domain edits. Future providers require their own semantic verification, not a blanket compatibility claim |
-| A15 | CI, dependency/license policy, coverage and reproducible releases | Upgrade campaign:52 Rust tests, strict checks, unchanged per-crate coverage gates, advisory/license/source/bans, notices, package and deterministic source release pass locally; GitHub CI is verified separately after push |
+| A15 | CI, dependency/license policy, coverage and reproducible releases | Upgrade campaign:53 Rust tests, strict checks, unchanged per-crate coverage gates, advisory/license/source/bans, notices, package and deterministic source release pass locally; GitHub CI is verified separately after push |
 
 Initial domain tests cover independent authorization decisions, invalid state
 transitions, publication fencing and transitive derivation/citation semantics.

@@ -8,8 +8,8 @@ use context_storage::Error;
 use context_storage::postgres::{
     Database, claim_job, existing_receipt, insert_resource, publish_revision, receipt,
 };
+use context_storage::sql::{self as sqlx, Row};
 use serde_json::json;
-use sqlx::Row;
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
@@ -25,6 +25,36 @@ async fn database() -> Database {
             std::error::Error::source(&error)
         )
     })
+}
+
+#[tokio::test]
+#[ignore = "requires CONTEXT_TEST_DATABASE_URL pointing at isolated PostgreSQL"]
+async fn embedded_migrator_reopens_the_original_sqlx_ledger_without_reapplying() {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&std::env::var("CONTEXT_TEST_DATABASE_URL").expect("isolated PostgreSQL"))
+        .await
+        .unwrap();
+    sqlx::query("SET search_path=public")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let original = sqlx::migrate::Migrator::new(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations"),
+    )
+    .await
+    .unwrap();
+    original.run(&pool).await.unwrap();
+    let snapshot = "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) FROM public._sqlx_migrations m";
+    let before: serde_json::Value = sqlx::query_scalar(snapshot).fetch_one(&pool).await.unwrap();
+    let db = database().await;
+    db.close().await;
+    let after: serde_json::Value = sqlx::query_scalar(snapshot).fetch_one(&pool).await.unwrap();
+    assert_eq!(
+        before, after,
+        "versions, checksums and installation times must remain unchanged"
+    );
+    pool.close().await;
 }
 
 struct Hierarchy {

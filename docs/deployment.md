@@ -99,7 +99,7 @@ the purge policy; versioned payload storage is rejected.
 
 ## Upgrading the embedded HTLK runtime
 
-The upgrade from HTLK `3448acb5` to `521f795d` changes its private SQLite schema
+The upgrade from HTLK `3448acb5` to `1e405c49` changes its private SQLite schema
 from 6 to 13 and changes executable/native implementation fingerprints. The new
 runtime rejects old execution databases; startup never migrates, deletes or resets
 them. PostgreSQL application records, payload storage and the derived search index

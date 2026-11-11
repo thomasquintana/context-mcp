@@ -7,10 +7,10 @@ use context_core::{
     context::{ContextMap, Evidence, Pointer, TokenAccounting},
     ids::{AssetId, ContentId, RevisionId, WorkspaceId},
 };
+use context_storage::sql::{self as sqlx, Row};
 use context_storage::{authorization::AuthorizedTransaction, postgres::resource_id};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use sqlx::Row;
 use std::{
     collections::{BTreeMap, BTreeSet},
     num::NonZeroU32,

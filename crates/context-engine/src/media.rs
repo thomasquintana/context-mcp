@@ -10,11 +10,11 @@ use context_core::{
     ids::{AssetId, ContentId, JobId, RevisionId, TenantId},
 };
 use context_storage::postgres::{existing_receipt, receipt};
+use context_storage::sql::{self as sqlx, Row};
 use context_workflows::host::JobGrant;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sqlx::Row;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 

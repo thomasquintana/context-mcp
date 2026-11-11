@@ -22,11 +22,11 @@ use context_core::{
 use context_storage::postgres::{
     Database, existing_receipt, insert_resource, receipt, resource_id,
 };
+use context_storage::sql::{self as sqlx, Row};
 use context_workflows::host::{Config as WorkflowConfig, JobGrant, WorkflowHost};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sqlx::Row;
 use std::{collections::BTreeSet, fmt, path::Path, sync::Arc};
 use uuid::Uuid;
 

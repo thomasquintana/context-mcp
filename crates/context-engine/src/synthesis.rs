@@ -5,6 +5,7 @@ use context_core::{
     content::{Origin, SourceReference},
     ids::{ContentId, WorkspaceId},
 };
+use context_storage::sql as sqlx;
 use context_storage::{
     postgres::{existing_receipt, receipt},
     search::SearchDocument,

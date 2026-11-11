@@ -2,10 +2,15 @@
 
 ## Unreleased
 
-- Pin the embedded HTLK compiler/runtime to revision `521f795d`, using its public
+- Pin the embedded HTLK compiler/runtime to revision `1e405c49`, using its public
   result-policy and immutable compilation-artifact interfaces. Existing HTLK SQLite
   execution databases require an explicit deployment cutover; they are not reset
   or migrated automatically.
+- Resolve the SQLite and MCP SDK advisory blockers through upstream HTLK's patched
+  bundled SQLite dependency and rmcp 3.9.0, preserving strict dependency gates.
+- Use exact-version PostgreSQL-only SQLx crates to avoid an unused SQLite-driver
+  resolution conflict. Preserve embedded migration versions, SQL and checksums with
+  SQLx's migration API and verify them against its original directory loader.
 - Project uniform MCP tool-result envelopes explicitly in shipped operator/client
   graphs, preserving application JSON outputs and opaque extraction checkpoints.
 - Verify envelope failure/large-result handling, offline evidence and fenced cleanup

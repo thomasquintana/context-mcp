@@ -6,11 +6,11 @@ use context_core::{
     ids::{AssetId, CollectionId, TenantId},
 };
 use context_storage::postgres::{existing_receipt, receipt};
+use context_storage::sql::{self as sqlx, Row};
 use futures_util::TryStreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sqlx::Row;
 use std::{net::SocketAddr, time::Duration};
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;

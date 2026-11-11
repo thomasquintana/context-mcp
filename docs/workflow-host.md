@@ -25,7 +25,7 @@ authorized job records before launching execution. Changing executable policies 
 removing required old role revisions requires draining/migrating those jobs through
 an explicit supported deployment procedure.
 
-The HTLK `521f795d` upgrade requires a fresh schema-13 execution store after old
+The HTLK `1e405c49` upgrade requires a fresh schema-13 execution store after old
 work is fully settled; schema-6 stores cannot be reopened. See the retained-data
 [cutover procedure](deployment.md#upgrading-the-embedded-htlk-runtime), including
 pending uploads, cleanup and legacy retry restrictions. There is no automatic

@@ -4,6 +4,7 @@ use context_core::{
     access::{Authentication, Permission, Resource},
     ids::{AssetId, CollectionId, ContentId, JobId, MemoryId, RevisionId, TenantId, WorkspaceId},
 };
+use context_storage::sql::{self as sqlx, Row};
 use context_storage::{
     postgres::{existing_receipt, receipt, resource_id},
     search::{Search, SearchDocument},
@@ -11,7 +12,6 @@ use context_storage::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sqlx::Row;
 use uuid::Uuid;
 
 /// Exact owned purge target. Derivation cleanup follows every owner/source boundary.

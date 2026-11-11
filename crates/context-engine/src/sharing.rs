@@ -2,6 +2,7 @@
 use crate::{Application, Error, Result};
 use context_core::access::{Authentication, Grant, Permission, Resource};
 use context_storage::postgres::{existing_receipt, receipt, resource_id};
+use context_storage::sql as sqlx;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};

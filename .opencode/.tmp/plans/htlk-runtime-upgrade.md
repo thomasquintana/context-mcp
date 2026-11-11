@@ -9,7 +9,8 @@ Finish with all intended changes committed and a new GitHub pull request.
 
 Branch: `feat/htlk-runtime-upgrade`.
 Baseline: context-mcp `7ecad1f`, HTLK `3448acb5dc7cebef4d08ef37bb79757fea780659`.
-Target: HTLK `521f795d913ae3e13938b8ed0fe19728d2babce6` (reviewed upstream main).
+Target: HTLK `1e405c495fc2e9b3b3fb812123f509178b08a9e5` (upstream SQLite fix merged).
+Initial reviewed integration target: `521f795d913ae3e13938b8ed0fe19728d2babce6`.
 
 ## Constraints and decisions
 
@@ -50,7 +51,7 @@ Target: HTLK `521f795d913ae3e13938b8ed0fe19728d2babce6` (reviewed upstream main)
    tests and existing auth/revocation/cancel/fenced-cleanup tests. Run fresh nonpaid
    PostgreSQL/S3/Typesense/Keycloak campaign, actual sandbox metadata, both transports
    and CLI, with repeated readiness/session reclamation. Fix observed regressions.
-6. **Release gates/evidence — pending.** Refresh notices, changelog and measured
+6. **Release gates/evidence — in progress.** Refresh notices, changelog and measured
    acceptance/verification docs. Preserve coverage floors/budgets. Run locked build,
    tracked release audit, `tools/verify.py --coverage`, notice check, dependency gates
    and deterministic release. Clearly retain historical paid/native-format evidence.
@@ -134,10 +135,31 @@ paid-test authorization. Remove only this campaign's disposable backing services
   Notices regenerated and `tools/notices.py --check` passed for the current lock;
   tracked release audit passed. Coverage/release/package are NOT yet verified for
   this branch. Stop only this task's context-mcp-ci stack while awaiting handoff.
+- Task 6 dependency-unblock subtask completed: HTLK pinned to merged PR #23 commit
+  1e405c49, resolving rusqlite 0.41.1/libsqlite3-sys 0.39.1; rmcp pinned to 3.9.0.
+  User approved PostgreSQL-only exact SQLx crates after the umbrella's unused
+  SQLite driver caused a native-links resolution conflict. A small shared storage
+  module reexports upstream SQLx queries/types; migration execution uses its public
+  embedded Migrator API. All original migration versions/descriptions/SQL/checksums
+  match the independent SQLx directory loader. Actual PostgreSQL test first applies
+  that original loader then reopens through Database, proving the full ledger
+  (including installation times) remains unchanged. All 26 ordinary tests, locked
+  workspace build/check, strict Clippy, advisory/license/source/bans, notice check,
+  release audit and diff check pass. The isolated alternate-port services are up
+  again for final task 6 coverage/release and final-pin native verification.
 
 ## Current next action
 
-Provide the requested HTLK SQLite handoff prompt; await a verified patched upstream
-revision. Resume task 6 with that pin and a local rmcp update, regenerate notices,
-reprovision the same isolated services, rerun functional and full coverage/release
-checks, update measured docs, then finish task 7 and open the context-mcp PR.
+User reported updated HTLK; reviewed merged upstream PR #23 at 1e405c49. It pins
+rusqlite 0.41.1 with patched bundled SQLite, replaces affected tokio-rusqlite with
+an upstream-private connection worker, preserves public APIs/schema 13 and changes
+native/executable fingerprints. Upstream dependency/quality/line/branch CI passed.
+Cargo then exposed SQLx 0.9.0's unused optional SQLite-driver native-links conflict.
+User explicitly approved using PostgreSQL-only exact-version SQLx core/driver crates
+and its public embedded-migration API. Shared SQLx reexports live in context-storage;
+services keep upstream query/transaction types, with no SQL/authority semantics change.
+The migration manifest must retain all original version/description/SQL/checksum facts
+and be independently compared to SQLx's directory loader; actual services verify reopen.
+Commit the verified dependency-unblock subtask. Run full coverage/release and native
+format checks against the final pin, update measured docs, then finish task 7 and
+open the context-mcp PR.

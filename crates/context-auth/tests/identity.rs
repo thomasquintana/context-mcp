@@ -4,6 +4,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use context_auth::{Authenticator, Error, OidcConfig, Verification};
 use context_core::access::Permission;
 use context_storage::postgres::Database;
+use context_storage::sql as sqlx;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{

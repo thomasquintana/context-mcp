@@ -6,6 +6,7 @@ use context_core::{
     ids::{ContentId, MemoryId, MemoryRevisionId, PrincipalId, WorkspaceId},
     memory::{MemoryValue, ReconciliationBasis},
 };
+use context_storage::sql::{self as sqlx, Row};
 use context_storage::{
     authorization::AuthorizedTransaction,
     postgres::{existing_receipt, receipt},
@@ -14,7 +15,6 @@ use context_storage::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sqlx::Row;
 use std::collections::BTreeSet;
 use uuid::Uuid;
 

@@ -4,6 +4,7 @@ use context_auth::Authenticator;
 use context_core::{access::Permission, ids::JobId};
 use context_engine::bootstrap;
 use context_storage::postgres::Database;
+use context_storage::sql::{self as sqlx, Row};
 use context_workflows::host::{Config, Handle, JobGrant, State, WorkflowHost};
 use object_store::{
     ObjectStoreExt,
@@ -13,7 +14,6 @@ use object_store::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sqlx::Row;
 use std::{
     collections::BTreeSet,
     process::{Child, Command, Stdio},

@@ -46,7 +46,7 @@ Target: HTLK `521f795d913ae3e13938b8ed0fe19728d2babce6` (reviewed upstream main)
    procedure, active jobs/cleanup/purge settlement, pending uploads and legacy retry
    restrictions. Verify incompatible stores stay unchanged and same-version reopen
    remains idempotent. Add only narrowly necessary diagnostics, with no new adapters.
-5. **Integration verification — pending.** Focused envelope/required-data/checkpoint
+5. **Integration verification — completed.** Focused envelope/required-data/checkpoint
    tests and existing auth/revocation/cancel/fenced-cleanup tests. Run fresh nonpaid
    PostgreSQL/S3/Typesense/Keycloak campaign, actual sandbox metadata, both transports
    and CLI, with repeated readiness/session reclamation. Fix observed regressions.
@@ -104,7 +104,21 @@ paid-test authorization. Remove only this campaign's disposable backing services
   database byte-for-byte unchanged. All five public-runtime tests and production
   terminal-run same-version reopen test pass; diff check and fmt pass. No operator
   migration tool or private-runtime-table copy added, and no deployment state touched.
+- Task 5: native fixture tests cover declared/absent/invalid/error/text-only results,
+  a literal 70-KB response, 70 discovery-only readiness lifetimes, zero-dispatch
+  terminal offline reopen, actual shipped extract/cleanup graph checkpoint shape,
+  nonzero native-exit rejection after destroy, and revoked checkpoint denial.
+  All 51 nonpaid workspace tests pass against fresh context-mcp-ci services on
+  alternate ports (Postgres 57432, S3 61000/61001, Typesense 60108, Keycloak 60080).
+  Existing user containers were left running. Actual sandbox metadata and both
+  binary transports/CLI passed. Strict all-target Clippy and diff check pass.
+  `python3 tools/format_acceptance.py` additionally passed all 28 native format and
+  four selection cases; evidence `target/providers/formats-opziwhbp/evidence.json`,
+  unchanged processing image `sha256:707838fe31b4f8584ddb1f9e91c7fcef84cf7c760269e1262528c1b9c98b5407`.
+  No model calls were made. Native owner's lifetime bound documented, no new
+  mechanism or fence-reset workaround introduced. Disposable services stay up for
+  task 6 coverage, then stop only context-mcp-ci.
 
 ## Current next action
 
-Commit verified task 4, then focused/native and actual-service verification in task 5.
+Commit verified task 5; refresh notices/evidence and run full task 6 release gates.

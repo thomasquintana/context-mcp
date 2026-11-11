@@ -83,6 +83,12 @@ revocation before using this host. The host is not a replacement for resource AC
 - Only accepted object-valued results cross into application publication.
 - Shutdown stops host admission, engine and native sessions, preserving execution
   history. The application drains request/worker ownership before shutdown.
+- The native client retains at most 4096 owner identities during one host lifetime,
+  including readiness lifetimes and workflow runs. This is separate from concurrent
+  runs/requests: retired transports release active session capacity, while generation
+  fences are never evicted. At the bound new owners fail closed; operators must
+  gracefully restart the single instance with the same store/configuration. Existing
+  durable work keeps its handles and authority. No automatic owner-fence reset occurs.
 
 Sandbox cleanup continues to use ordinary operator graphs and successful provider
 receipts, per the user's accepted boundary. No direct provider calls, custom MCP

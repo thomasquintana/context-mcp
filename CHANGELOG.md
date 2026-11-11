@@ -8,6 +8,9 @@
   or migrated automatically.
 - Project uniform MCP tool-result envelopes explicitly in shipped operator/client
   graphs, preserving application JSON outputs and opaque extraction checkpoints.
+- Verify envelope failure/large-result handling, offline evidence and fenced cleanup
+  through the native host; rerun actual backing services, both transports and 28
+  native format plus four media-selection cases with the upgraded embedded runtime.
 
 - Deliver HTLK-owned user/agent call/upload CLI, operator provisioning/discovery/
   identity/membership/credential controls, authenticated content-resource templates,

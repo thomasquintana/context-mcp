@@ -242,6 +242,10 @@ export CONTEXT_MCP="$PWD/target/debug/context-mcp"
 export CONTEXT_ENDPOINT="https://context.example/mcp"
 ```
 
+Use a client binary matching the server's exported catalog. The CLI pins exact
+descriptors and verifies them through HTLK; a mismatched client/server release can
+fail discovery before a tool runs. Ask the operator which revision to build.
+
 Load the credential from your private file, without putting it in a command argument:
 
 ```sh
@@ -273,7 +277,9 @@ To make repeated commands shorter, an optional shell helper is:
 
 ```sh
 context_call() {
-  "$CONTEXT_MCP" call --endpoint "$CONTEXT_ENDPOINT" --tool "$@"
+  local tool="$1"
+  shift
+  "$CONTEXT_MCP" call --endpoint "$CONTEXT_ENDPOINT" --tool "$tool" "$@"
 }
 ```
 
@@ -353,6 +359,20 @@ Expected result:
 
 Keep `collection`. Creation requires **Share**, not merely Ingest. A new collection
 inherits access from its workspace.
+
+For any arguments-only example, invoke the named tool with a heredoc, just as in
+Step 1. For example, place the Step 2 JSON between these delimiters after replacing
+its placeholder:
+
+```text
+context_call context_create_collection <<'JSON'
+...the complete JSON argument object...
+JSON
+```
+
+Or save the edited object in a file and use
+`context_call context_create_collection --arguments /absolute/path/collection.json`.
+Do not send the illustrative response back as the next request.
 
 ### Step 3: Add a note
 
@@ -1364,6 +1384,8 @@ export CONTEXT_GID="$(id -g)"
 
 Keep runtime state and secrets outside the checkout/build context. Ensure the chosen
 parent exists and the directory is private and writable by the application identity.
+Use its canonical absolute host path: the generator resolves symlinks, and the
+identical-path Docker mount must agree with the resulting staging location.
 The configuration helper creates new directories with mode 0700; it does not tighten
 permissions of directories that already exist.
 

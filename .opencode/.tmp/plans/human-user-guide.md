@@ -41,7 +41,7 @@ by this documentation request. Existing measured evidence is not a newly execute
    resources, permission/limit/ID tables). Link README/deployment and correct only
    narrowly related contradictions. Validate examples against current implementation;
    record review evidence and commit the completed writing task.
-3. **Verification and polish — pending.** Independently review handbook against source
+3. **Verification and polish — completed.** Independently review handbook against source
    and tested contracts; validate JSON, CLI flags, links/anchors, setup ordering,
    credential handling and operation coverage. Run required locked audit/notices,
    dependency/strict/actual-service verification through tools/verify.py, and
@@ -93,11 +93,32 @@ by this documentation request. Existing measured evidence is not a newly execute
   Hash example independently matches SHA-256 of the exact five bytes hello.
   git diff --check passes. No live model calls or application behavior changes.
   Follow-up: final source/CLI review and required isolated nonpaid release gates.
+- Task 3: all 53 nonpaid Rust tests pass under tools/verify.py --coverage against
+  fresh owned context-mcp-ci PostgreSQL/MinIO/Typesense/Keycloak on alternate ports
+  57432, 61000/61001, 60108, 60080. Includes actual HTTP/stdio/CLI, issuer, native
+  sandbox metadata, storage, application invariants and slow-start regression.
+  Format, strict Clippy/rustdoc, advisory/license/source/bans, unchanged per-crate
+  coverage floors/budgets, coverage checker and core package rebuild pass.
+  Measured lines: core 210/233; storage 916/1001; workflows 726/881; auth 397/421;
+  engine 4378/5110; process 199/737; application 805/1282. No thresholds changed.
+  Locked workspace build, notices.py --check, audit_release.py and full release.py
+  pass. After final prose edits, release.py --skip-build refreshed the deterministic
+  source archive; QA verifies it includes the exact guide and excludes temporary
+  plans. All owned service containers/volumes removed; preexisting containers left
+  running. No paid provider calls or new full-format compatibility claims.
+  Final handbook: 2,438 lines/about 14,500 words. QA passes 55 JSON parses, 39
+  schema-checked argument examples, 30 shell syntax blocks, 68 local links/anchors,
+  all 23 tool rows, all 12 command rows and every subcommand flag against actual help.
+  Isolated Compose config/config-generator/profile-generator checks pass with fixture
+  env references and existing image inspection only. QA initially assumed macOS
+  /var was canonical; corrected that check and clarified canonical staging paths.
+  Also clarified matching client/server catalogs and passing argument-only examples
+  to the CLI. No application code changed. Next: review complete diff/commits and PR.
 
 ## Current next action
 
-Commit the verified handbook task, reread this plan, then perform task 3. Existing
-user containers occupy default service ports; use a separate context-mcp-ci stack
-on alternate ports and remove only that owned disposable stack after verification.
-Do not run paid model/format campaigns to validate prose. Update this section and
-completion evidence after the task.
+Commit task 3's guide polish/evidence, reread this plan, then perform task 4. Review
+all branch commits and the full origin/main diff, verify clean intended state and
+no secrets, push docs/human-user-guide, create a new PR against main, and record its
+URL plus observed hosted verification separately from local results. Finish with
+all intended changes committed and report the guide/plan locations and PR URL.

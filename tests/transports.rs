@@ -5,8 +5,9 @@ use context_core::{access::Permission, ids::JobId};
 use context_engine::bootstrap;
 use context_storage::postgres::Database;
 use context_workflows::host::{Config, Handle, JobGrant, State, WorkflowHost};
+use futures_util::TryStreamExt;
 use object_store::{
-    ObjectStoreExt,
+    ObjectStore, ObjectStoreExt,
     aws::AmazonS3Builder,
     path::Path,
     signer::{Method, Signer},
@@ -454,6 +455,18 @@ graph acceptance.stdio_roundtrip {
         sqlx::query("DELETE FROM context.objects WHERE content IN(SELECT id FROM context.content WHERE workspace=$1)")
             .bind(Uuid::from(initial.workspace)).execute(db.pool()).await.unwrap();
         sqlx::query("DELETE FROM context.resources WHERE id=ANY($1)").bind(vec![Uuid::from(initial.tenant),Uuid::from(foreign.tenant)]).execute(db.pool()).await.unwrap();
+        // Fast runs may finish before upload retirement. Include an opaque,
+        // content-free fence so disposable-bucket teardown is exercised reliably.
+        objects.put(&Path::from(format!("uploads/{}",Uuid::now_v7())),object_store::PutPayload::new()).await.unwrap();
+        // All writers are stopped and this bucket belongs only to this test.
+        // Production upload fences are permanent; only disposable teardown may
+        // remove them. Any unexpected payload remains a test failure.
+        let remaining=objects.list(None).try_collect::<Vec<_>>().await.unwrap();
+        for object in remaining {
+            assert_eq!(object.size,0,"only content-free upload fences may remain");
+            assert!(object.location.as_ref().starts_with("uploads/"),"unexpected remaining object namespace");
+            objects.delete(&object.location).await.unwrap();
+        }
         let delete_bucket=objects.signed_url(Method::DELETE,&Path::from(""),Duration::from_secs(60)).await.unwrap();
         assert!(setup.delete(delete_bucket).send().await.unwrap().status().is_success());
         assert!(setup.delete(format!("{typesense}/collections/{index}")).header("X-TYPESENSE-API-KEY",index_key).send().await.unwrap().status().is_success());

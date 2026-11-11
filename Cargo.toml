@@ -82,6 +82,7 @@ sqlx.workspace = true
 tower = { version = "0.5", features = ["limit"] }
 
 [dev-dependencies]
+futures-util.workspace = true
 htlk.workspace = true
 object_store.workspace = true
 

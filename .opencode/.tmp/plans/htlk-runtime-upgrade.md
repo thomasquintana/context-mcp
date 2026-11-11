@@ -290,6 +290,27 @@ paid-test authorization. Remove only this campaign's disposable backing services
   (82.63%); application coverage remains 805/1282 (62.79%). Hosted runs on 2e4f194
   are in progress; do not stop at local success or repeat the earlier unobserved
   hosted-success assumption. Finish release/audit/notices and watch GitHub result.
+- The combined native + observer fix on 37958d1 passes the full 53-test local
+  nonpaid coverage campaign, strict checks, all existing budgets and core package.
+  New observed coverage: workflows 724/881 (82.18%), engine 4371/5110 (85.54%),
+  application 805/1282 (62.79%); budgets remain unchanged. The regression now covers
+  the actual transport helper and native peer together, not merely the lower host.
+- Hosted 37958d1 runs now pass every transport operation and the slow-start
+  regression, then fail DELETE of the disposable S3 bucket. The transport fixture
+  deleted only objects still referenced in PostgreSQL; slow runs cross the 60-second
+  upload expiry and leave approved permanent zero-byte upload fences. Reproduce
+  deterministically by including one generated zero-byte uploads/ control record
+  after writers stop. Fix only disposable test-bucket teardown: enumerate leftovers,
+  assert they are content-free, delete them, then require successful bucket removal.
+  Never remove fences from an active deployment or hide unexpected retained payloads.
+- The disposable-fence regression reproduces the exact hosted DELETE-bucket
+  assertion locally (74.79 seconds), after all transport operations pass. Teardown
+  now lists remaining keys after all application writers stop, requires size zero
+  and uploads/ namespace, removes only those owned disposable fences, and still
+  requires successful bucket deletion. The same targeted real-service campaign
+  passes (72.22 seconds); locked all-target check, fmt and strict Clippy pass.
+  Added only the already-resolved futures-util dev dependency for stream collection.
+  Push this verified cleanup fix and follow the full hosted pipeline again.
 
 ## Current next action
 

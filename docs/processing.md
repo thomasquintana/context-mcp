@@ -89,7 +89,14 @@ receipts recover already accepted jobs without fetching a mutable URL again.
   the actual index count. That run used the preceding processing image from
   `formats-3qqtz4uu`; later helper changes add validation/mixed-page handling and
   were rechecked by the full native format matrix. The original combined paid
-  delivery E2E is recorded in verification.md; it was not rerun for this upgrade.
+  delivery E2E is retained in verification.md alongside the new upgrade campaign.
+- After explicit authorization on 2026-11-11, that paid Rust case passed again on
+  the upgraded runtime with the current processing image. It checks known blue/ocean
+  evidence, finite 256-dimensional embeddings and exact index contents. A stale
+  test-only attempt to reuse its empty 3-D fixture collection for the real model
+  space was corrected to use a distinct collection, preserving the application's
+  retained index-identity checks. The fresh paid HTTP/stdio container campaign also
+  passed; evidence is `target/deployment/verified-ozka9ng1/evidence.json`.
 - Six ordinary backing-service ingestion tests pass, including exact URL egress,
   redirect refusal and receipt recovery; these use pure processing roles.
 - Normal tests separately reject archive traversal/excess members, prove source
@@ -105,3 +112,7 @@ cargo test -p context-engine --test ingestion --locked -- --ignored --skip actua
 The paid provider case additionally requires the configured binaries, actual catalog
 snapshot, model credential inherited by environment, fixture video, processing profile
 and `CONTEXT_TEST_WORKDIR` under `ALLOW_DIRS`. Run only its explicit test-name filter.
+
+```sh
+cargo test -p context-engine --test ingestion actual_video_model_workflows_publish_independently_checked_evidence --locked -- --ignored --exact --test-threads=1
+```

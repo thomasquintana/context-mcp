@@ -29,6 +29,11 @@ dependency policy, the independent coverage-gate test, notice generation, core p
 archive verification and locked release compilation. CI workflow syntax was checked
 with actionlint1.7.12 during the original delivery. GitHub CI execution for this
 upgrade occurs after push and is distinct from these local results.
+The initial hosted coverage runs exposed the transport test's roughly ten-second
+startup allowance; its follow-up uses a finite 60-second wall-clock deadline while
+retaining actual readiness/process-exit assertions. Local targeted and full
+coverage campaigns pass with that test-only change; consult PR checks for the
+separately running hosted verification.
 
 ## Embedded HTLK upgrade
 
@@ -71,7 +76,7 @@ attributes or test-only behavior are used.
 | context-auth |397 /421|94.30%|
 | context-engine |4370 /5110|85.52%|
 | context-process |199 /737|27.00%|
-| context-mcp |807 /1282|62.95%|
+| context-mcp |805 /1282|62.79%|
 
 The goal remains 99% meaningful production line coverage; it is **not yet reached**.
 CI enforces measured per-crate floors and uncovered-line budgets in
@@ -89,15 +94,24 @@ as covered lines. Raw JSON is written to target/coverage/coverage.json.
   crop and one-second duration checks passed. Evidence:
   `target/providers/formats-hnl2i5wt/evidence.json`. No model calls were made.
   Details and prior measured limits remain in processing.md/context-services.md.
-- The original delivery's **container** journey used actual initial providers, gpt-4.1, whisper-1
-  and text-embedding-3-small through unchanged HTLK. It passed HTTP video upload,
+- After explicit user authorization on 2026-11-11, a fresh **container** journey used
+  actual initial providers, gpt-4.1, whisper-1 and text-embedding-3-small through the
+  upgraded HTLK runtime. It passed HTTP video upload,
   description/transcription/enrichment/embedding/publication, hybrid retrieval,
   native clip materialization, model-classified contradiction preservation, cited
   saved synthesis, transitive purge, then stdio ingest/query/purge in one retained
   client run. All MCP operations used the HTLK CLI or compiled client graph. The
   reference provider/container limitation remains the accepted receipt boundary.
-  This paid journey is retained historical evidence; it was not rerun for the HTLK
-  upgrade and is not claimed as new model-provider verification.
+- The separately invoked paid Rust case
+  `actual_video_model_workflows_publish_independently_checked_evidence` also passed.
+  It checks at least two published chunks containing the known blue/ocean evidence,
+  finite 256-dimensional embeddings and exact Typesense document count. Its first
+  attempt stopped before ingestion because the old fixture reused a retained 3-D
+  collection identity for the real model space; the corrected test allocates a
+  distinct model collection. Production index-identity protections remain intact.
+  This is one additional opt-in paid Rust test, separate from the 52-test nonpaid
+  coverage campaign and the container journey; its uninstrumented execution is not
+  added to the coverage measurements above.
 
 Reproduce the opt-in paid journey with the configured model credential inherited:
 
@@ -106,12 +120,20 @@ python3 tools/deployment_acceptance.py
 ```
 
 It uses isolated alternate ports and removes only its own Compose project/volumes.
-Original paid delivery evidence: target/deployment/verified-f_n7k_au/evidence.json.
-Application image:
-`sha256:c0d69776d25a6149760a4282d13318a708452c62b6ffc0775048041fc1c4f862`.
+Latest paid evidence: `target/deployment/verified-ozka9ng1/evidence.json`.
+Application image reported by that campaign:
+`sha256:b7adc2e45760d8cd7f7ce1f97f2a39af66aea907dedbdda132ee633818f32de6`.
 Processing image:
 `sha256:707838fe31b4f8584ddb1f9e91c7fcef84cf7c760269e1262528c1b9c98b5407`.
-These are observed local identities, not claims of a published image registry.
+The application image was rebuilt from the upgraded branch using the locked
+dependency graph before invoking the campaign with `--skip-build`. Private staging
+was empty after purge and teardown; all 26 retained campaign files were checked for
+the privately loaded source model credential, with zero matches. These are observed local image
+identities, not claims of a published image registry.
+
+The original paid delivery evidence remains at
+`target/deployment/verified-f_n7k_au/evidence.json`, with application image
+`sha256:c0d69776d25a6149760a4282d13318a708452c62b6ffc0775048041fc1c4f862`.
 The initial model429 and mini-model incorrect-color result remain in integration-spike.md.
 
 ## Dependency, license and release gates

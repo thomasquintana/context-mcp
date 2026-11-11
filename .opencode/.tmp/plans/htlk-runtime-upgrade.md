@@ -58,7 +58,7 @@ Initial reviewed integration target: `521f795d913ae3e13938b8ed0fe19728d2babce6`.
 7. **Final review and PR — completed.** Read plan, review all commits/base diff,
    confirm intended changes committed and no secrets, push this branch and create a
    new PR. Return PR URL and actual local/remote verification status.
-8. **Authorized paid model campaigns — in progress.** User explicitly requested
+8. **Authorized paid model campaigns — completed.** User explicitly requested
    paid tests after PR creation. Obtain the configured credential by environment or
    private-file reference without exposing it. Build the application container from
    this branch; run `tools/deployment_acceptance.py` against isolated services and
@@ -67,8 +67,8 @@ Initial reviewed integration target: `521f795d913ae3e13938b8ed0fe19728d2babce6`.
    Verify actual published evidence, vectors, model outcomes, citations, purge and
    both transports; accept normal sandbox destroy receipts under the existing
    provider boundary. Record exact evidence/images and failures, clean only owned
-  services, update permanent docs, commit and push results to PR #1.
-9. **Observed hosted-CI startup follow-up — in progress.** PR's nonpaid Linux coverage
+   services, update permanent docs, commit and push results to PR #1.
+9. **Observed hosted-CI startup follow-up — completed locally; hosted rerun pending.** PR's nonpaid Linux coverage
    transport test failed after its fixed ~10-second server-readiness allowance while
    the server remained alive. Preserve all outcome assertions and use a finite
    wall-clock startup allowance suitable for instrumented hosted startup. Verify
@@ -240,6 +240,16 @@ paid-test authorization. Remove only this campaign's disposable backing services
   Paid campaign staging is empty and a private equality scan of all 26 retained
   files found zero source model-credential matches. The Rust fixture's test setup
   correction remains scoped to its own empty bootstrap collection/binding.
+- Final paid follow-up gates pass: all 52 nonpaid Rust tests under coverage plus
+  strict fmt/Clippy/rustdoc, unchanged per-crate budgets, package rebuild, dependency
+  policy, notice check, tracked-input audit and locked reproducible release. Latest
+  application line coverage is 805/1282 (62.79%), within the existing budget; paid
+  uninstrumented execution is not added to coverage. Permanent docs now record both
+  authorized paid successes and their exact image/evidence references, preserving
+  original evidence and the initial pre-ingestion fixture failure. Owned CI test
+  services/volumes are removed; original user containers remain untouched. Hosted
+  startup-fix rerun is still running (observed at its service-setup step), not yet
+  a remote success claim. Commit/push these measured results and update PR #1.
 
 ## Current next action
 
@@ -247,9 +257,7 @@ User reported updated HTLK; reviewed merged upstream PR #23 at 1e405c49. It pins
 rusqlite 0.41.1 with patched bundled SQLite, replaces affected tokio-rusqlite with
 an upstream-private connection worker, preserves public APIs/schema 13 and changes
 native/executable fingerprints. Upstream dependency/quality/line/branch CI passed.
-Original implementation/verification/PR tasks are complete. Follow explicitly
-authorized task 8: preparation is verified; run the paid deployment campaign using
-the freshly rebuilt image (`--skip-build`) and privately loaded provider `.env`
-credential. Keep actual requests HTLK-owned and secret values out of output. Then
-run the existing paid Rust application case if configured prerequisites are present,
-record measured evidence, commit and update PR #1.
+Both explicitly authorized paid campaigns and required local follow-up gates pass.
+Commit/push task 8's measured evidence and paid-fixture correction, update PR #1's
+description to reflect new paid verification, and report actual hosted CI state.
+Task 9's bounded startup fix is pushed and verified locally; remote rerun is pending.

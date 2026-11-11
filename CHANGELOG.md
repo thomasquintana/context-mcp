@@ -16,6 +16,10 @@
 - Verify envelope failure/large-result handling, offline evidence and fenced cleanup
   through the native host; rerun actual backing services, both transports and 28
   native format plus four media-selection cases with the upgraded embedded runtime.
+- Verify the explicitly authorized paid video/model Rust case and fresh HTTP/stdio
+  container journey, including real model conflict preservation, cited synthesis
+  and purge. Keep the paid fixture's model index distinct from its bootstrap vector
+  space, and give hosted instrumented transport startup a finite readiness deadline.
 
 - Deliver HTLK-owned user/agent call/upload CLI, operator provisioning/discovery/
   identity/membership/credential controls, authenticated content-resource templates,

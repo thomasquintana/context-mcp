@@ -100,3 +100,6 @@ checks storage/lifecycle behavior; the separate actual sandbox selection tests p
 the reference native operations. The actual HTTP/stdio binary test passes query,
 budget, expansion and history. Its stdio roundtrip uses one existing HTLK loop to
 retain the run-owned provider session across admission, polling and retrieval.
+The authorized 2026-11-11 paid container campaign also passed real multimodal query,
+native one-second clip materialization and both-transport purge on the upgraded
+runtime; see `target/deployment/verified-ozka9ng1/evidence.json` and verification.md.

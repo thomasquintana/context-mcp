@@ -73,6 +73,13 @@ Initial reviewed integration target: `521f795d913ae3e13938b8ed0fe19728d2babce6`.
    the server remained alive. Preserve all outcome assertions and use a finite
    wall-clock startup allowance suitable for instrumented hosted startup. Verify
    targeted/full transport checks and report subsequent actual remote CI separately.
+10. **Latest hosted workflow failure — in progress.** User reports CI failure after
+    the readiness fix. Inspect both latest runs at c44da37: startup now passes, but
+    a later `succeeded` assertion hides the call site and failure code. Add useful
+    redacted test diagnostics and reproduce the independent native adapter's fixed
+    10-second initialization bound with an 11-second-start peer. Fix through existing
+    public HTLK timeout settings, preserve no-retry/dispatch invariants, verify local
+    gates and follow the pushed GitHub run to an observed successful conclusion.
 
 ## Verification commands
 
@@ -250,6 +257,18 @@ paid-test authorization. Remove only this campaign's disposable backing services
   services/volumes are removed; original user containers remain untouched. Hosted
   startup-fix rerun is still running (observed at its service-setup step), not yet
   a remote success claim. Commit/push these measured results and update PR #1.
+- Task 10 diagnosis/regression: both latest hosted runs passed HTTP readiness and
+  failed at a later generic `succeeded` assertion after ~122 seconds. The adapter
+  still used its independent 10-second MCP initialization/discovery limit. An
+  independent peer delaying startup by 11 seconds reproduces E_DEPENDENCY before
+  the first tool operation with that old bound. With the existing public native
+  adapter allowance set to 30 seconds, the same regression passes and its dispatch
+  log proves exactly one tool invocation, without retry/replay. Added track-caller
+  and redacted failure-code diagnostics to the transport assertion helper so any
+  remaining hosted failure identifies its phase. Strict Clippy/fmt pass. Commit and
+  push this targeted verified fix, then run the full nonpaid/coverage/release gates
+  and follow hosted CI to success; the exact hosted phase remains to be confirmed
+  by the improved diagnostic or a passing full run.
 
 ## Current next action
 
@@ -257,7 +276,8 @@ User reported updated HTLK; reviewed merged upstream PR #23 at 1e405c49. It pins
 rusqlite 0.41.1 with patched bundled SQLite, replaces affected tokio-rusqlite with
 an upstream-private connection worker, preserves public APIs/schema 13 and changes
 native/executable fingerprints. Upstream dependency/quality/line/branch CI passed.
-Both explicitly authorized paid campaigns and required local follow-up gates pass.
-Commit/push task 8's measured evidence and paid-fixture correction, update PR #1's
-description to reflect new paid verification, and report actual hosted CI state.
-Task 9's bounded startup fix is pushed and verified locally; remote rerun is pending.
+User reports latest CI failure. Follow task 10: commit/push the reproduced native
+startup fix and improved transport diagnostics, verify all local nonpaid/coverage/
+release gates, update measured evidence, and wait for actual hosted CI success.
+Prior paid evidence remains valid; no paid rerun is required to diagnose this
+nonpaid initialization boundary unless new observed behavior justifies it.

@@ -69,10 +69,17 @@ async fn call(host: &WorkflowHost, job: JobId, role: &str, request: Value) -> St
     result(host, &handle).await
 }
 
+#[track_caller]
 fn succeeded(state: State) -> Value {
     match state {
         State::Succeeded(value) => value,
-        _ => panic!("expected successful application operation"),
+        State::Failed(code) => {
+            panic!("expected successful application operation; HTLK failed: {code}")
+        }
+        State::Cancelled => panic!("expected successful application operation; run was cancelled"),
+        State::Running => {
+            panic!("expected successful application operation; run is still executing")
+        }
     }
 }
 

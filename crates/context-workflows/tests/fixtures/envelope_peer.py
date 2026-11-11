@@ -1,6 +1,11 @@
 """Independent stdio fixture: literal results and dispatch facts, no real provider claims."""
 import json
+import os
 import sys
+import time
+
+# Startup is independent of operation execution and never dispatches a tool.
+time.sleep(int(os.environ.get("FIXTURE_STARTUP_DELAY_MS", "0")) / 1000)
 
 with open(sys.argv[1]) as source:
     descriptors = [entry["descriptor"] for entry in json.load(source)["tools"]["tools"]]

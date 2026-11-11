@@ -20,6 +20,8 @@
   container journey, including real model conflict preservation, cited synthesis
   and purge. Keep the paid fixture's model index distinct from its bootstrap vector
   space, and give hosted instrumented transport startup a finite readiness deadline.
+- Allow bounded slow native MCP initialization for stdio providers, independently
+  of graph attempt deadlines, and preserve single-dispatch behavior across startup.
 
 - Deliver HTLK-owned user/agent call/upload CLI, operator provisioning/discovery/
   identity/membership/credential controls, authenticated content-resource templates,

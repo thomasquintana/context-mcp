@@ -160,7 +160,9 @@ fn adapter(endpoints: &BTreeMap<String, Endpoint>) -> Result<Arc<NativeMcpAdapte
         .iter()
         .map(|(name, endpoint)| Ok((name.clone(), endpoint.resolve()?)))
         .collect::<Result<_>>()?;
-    Ok(Arc::new(NativeMcpAdapter::new(endpoints, 10_000)?))
+    // A stdio provider may initialize tokenizers/indexes before answering MCP.
+    // Keep negotiation bounded independently of the graph's attempt deadline.
+    Ok(Arc::new(NativeMcpAdapter::new(endpoints, 30_000)?))
 }
 
 /// Export complete selected descriptors using HTLK's existing discovery API.

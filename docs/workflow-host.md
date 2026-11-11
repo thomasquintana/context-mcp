@@ -78,6 +78,9 @@ revocation before using this host. The host is not a replacement for resource AC
 - Bounded in-process workers/runs using HTLK's existing engine.
 - Default role execution: 30-minute run, 120-second attempt, four concurrent calls;
   4MB evaluator value/output bounds and 64M deterministic steps.
+- Native MCP connection initialization and descriptor discovery have a finite
+  30-second allowance, including a stdio provider's startup work. Per-attempt/run
+  deadlines remain independent; slow startup does not authorize a retry or replay.
 - Start returns a durable handle without waiting for completion. Stable keys bridge
   admission/recovery; inspection distinguishes running/succeeded/failed/cancelled.
 - Only accepted object-valued results cross into application publication.

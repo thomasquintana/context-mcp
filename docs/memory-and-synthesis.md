@@ -80,4 +80,8 @@ supersession, stale concurrent versions, configured author precedence, citation
 validation, transient versus saved synthesis, full dependency edges and source
 revocation with retained citation-only assertions. These processing/model roles are
 pure fixtures; they establish application invariants, not real model reasoning.
-Combined live model checks belong to final delivery verification.
+The explicitly authorized 2026-11-11 paid container campaign additionally verified
+real gpt-4.1 contradiction preservation and saved cited synthesis on the upgraded
+runtime, followed by transitive purge. Evidence is
+`target/deployment/verified-ozka9ng1/evidence.json`; exact revisions and provider
+boundaries are recorded in verification.md.

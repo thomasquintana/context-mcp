@@ -7,6 +7,14 @@ Read the permanent requirements and measured evidence before changing behavior:
 `docs/deployment.md` records CLI/container operation. Use Git history for completed
 delivery checkpoints; the temporary implementation plan has been retired.
 
+## Active HTLK upgrade
+
+During `feat/htlk-runtime-upgrade`, consult
+`.opencode/.tmp/plans/htlk-runtime-upgrade.md` after every compaction, before choosing
+work and after every task for alignment and general guidance. Update the plan with
+each task's completion evidence and follow-ups, and commit each completed verified
+task. Finish with all intended changes committed and a new pull request.
+
 ## Architecture boundaries
 
 - One Rust application instance. PostgreSQL, Typesense, and S3-compatible storage.

@@ -15,7 +15,8 @@ jobs:
           rustup toolchain install 1.98.0 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview
           cargo install cargo-llvm-cov --version 0.9.1 --locked
           cargo install cargo-deny --version 0.20.2 --locked
-          cargo install cargo-about --version 0.9.2 --locked
+          cargo install cargo-about --version 0.9.2 --locked --features cli
+          cargo about --version
       - run: cargo build --workspace --all-features --locked
       - run: python3 tools/audit_release.py
       - name: Actual PostgreSQL, MinIO, Typesense, Keycloak and unchanged sandbox

@@ -66,10 +66,17 @@ receipts recover already accepted jobs without fetching a mutable URL again.
 
 ## Measured evidence
 
+- On 2026-11-11, `python3 tools/format_acceptance.py` passed all 28 format cases and
+  four exact media-selection cases with HTLK `1e405c49`, the updated extraction
+  graph and unchanged processing image
+  `sha256:707838fe31b4f8584ddb1f9e91c7fcef84cf7c760269e1262528c1b9c98b5407`.
+  Evidence: `target/providers/formats-hnl2i5wt/evidence.json`. All per-case checks
+  and the campaign command completed; no model calls were made. Native destroy
+  receipts retain the documented provider boundary.
 - `tools/format_acceptance.py` ran 28 synthetic format cases through the actual
   sandbox and compiled reference extraction graph, checking independently known
   text/segment classes, exit/destroy receipts and SHA-256 of managed outputs.
-  Latest evidence: `target/providers/formats-e5psibk0/evidence.json`; image
+  Earlier delivery evidence: `target/providers/formats-e5psibk0/evidence.json`; image
   `sha256:7aac0dea0dd5c04ec6906b2ba760bdea39bdd550ebcaca2b6f01fc8ddad35803`.
   The command wrapper reached its overall timeout after writing completed evidence;
   all 28 individual HTLK executions and assertions completed. No model calls in
@@ -81,8 +88,15 @@ receipts recover already accepted jobs without fetching a mutable URL again.
   checked published evidence containing blue/ocean, finite vector256 values and
   the actual index count. That run used the preceding processing image from
   `formats-3qqtz4uu`; later helper changes add validation/mixed-page handling and
-  were rechecked by the full native format matrix. Combined final delivery E2E is
-  rerun at the release checkpoint.
+  were rechecked by the full native format matrix. The original combined paid
+  delivery E2E is retained in verification.md alongside the new upgrade campaign.
+- After explicit authorization on 2026-11-11, that paid Rust case passed again on
+  the upgraded runtime with the current processing image. It checks known blue/ocean
+  evidence, finite 256-dimensional embeddings and exact index contents. A stale
+  test-only attempt to reuse its empty 3-D fixture collection for the real model
+  space was corrected to use a distinct collection, preserving the application's
+  retained index-identity checks. The fresh paid HTTP/stdio container campaign also
+  passed; evidence is `target/deployment/verified-ozka9ng1/evidence.json`.
 - Six ordinary backing-service ingestion tests pass, including exact URL egress,
   redirect refusal and receipt recovery; these use pure processing roles.
 - Normal tests separately reject archive traversal/excess members, prove source
@@ -98,3 +112,7 @@ cargo test -p context-engine --test ingestion --locked -- --ignored --skip actua
 The paid provider case additionally requires the configured binaries, actual catalog
 snapshot, model credential inherited by environment, fixture video, processing profile
 and `CONTEXT_TEST_WORKDIR` under `ALLOW_DIRS`. Run only its explicit test-name filter.
+
+```sh
+cargo test -p context-engine --test ingestion actual_video_model_workflows_publish_independently_checked_evidence --locked -- --ignored --exact --test-threads=1
+```

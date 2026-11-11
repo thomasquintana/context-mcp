@@ -6,12 +6,16 @@ graph context.sandbox_metadata {
     outputs = { sessions = json, profiles = json }
     nodes {
         arguments = eval(json, {})
-        sessions = call(mcp.tool("sandbox", "sandbox_list"))
-        profiles = call(mcp.tool("sandbox", "profile_list"))
+        sessions_call = call(mcp.tool("sandbox", "sandbox_list"))
+        profiles_call = call(mcp.tool("sandbox", "profile_list"))
+        sessions = eval(json, inputs.response.data) { inputs = { response = McpToolResult } }
+        profiles = eval(json, inputs.response.data) { inputs = { response = McpToolResult } }
     }
     edges {
-        edge session_arguments { from = arguments.outputs.value to = sessions.inputs.arguments }
-        edge profile_arguments { from = arguments.outputs.value to = profiles.inputs.arguments }
+        edge session_arguments { from = arguments.outputs.value to = sessions_call.inputs.arguments }
+        edge profile_arguments { from = arguments.outputs.value to = profiles_call.inputs.arguments }
+        edge session_data { from = sessions_call.outputs.value to = sessions.inputs.response }
+        edge profile_data { from = profiles_call.outputs.value to = profiles.inputs.response }
         edge sessions { from = sessions.outputs.value to = outputs.sessions }
         edge profiles { from = profiles.outputs.value to = outputs.profiles }
     }

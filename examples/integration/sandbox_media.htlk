@@ -6,15 +6,17 @@ graph context.sandbox_media {
     nodes {
         create = call(mcp.tool("sandbox", "sandbox_create"))
         exec_arguments = eval(json, {
-            id = inputs.created.id,
+            id = inputs.created.data.id,
             command = inputs.command,
             timeout = 20
-        }) { inputs = { created = json, command = string } }
+        }) { inputs = { created = McpToolResult, command = string } }
         execute = call(mcp.tool("sandbox", "sandbox_exec"))
-        destroy_arguments = eval(json, { id = inputs.executed.id }) {
-            inputs = { executed = json }
+        destroy_arguments = eval(json, { id = inputs.executed.data.id }) {
+            inputs = { executed = McpToolResult }
         }
         destroy = call(mcp.tool("sandbox", "sandbox_destroy"))
+        execution = eval(json, inputs.response.data) { inputs = { response = McpToolResult } }
+        cleanup = eval(json, inputs.response.data) { inputs = { response = McpToolResult } }
     }
     edges {
         edge create_request { from = inputs.create_request to = create.inputs.arguments }
@@ -23,8 +25,10 @@ graph context.sandbox_media {
         edge exec_request { from = exec_arguments.outputs.value to = execute.inputs.arguments }
         edge executed { from = execute.outputs.value to = destroy_arguments.inputs.executed }
         edge destroy_request { from = destroy_arguments.outputs.value to = destroy.inputs.arguments }
-        edge execution { from = execute.outputs.value to = outputs.execution }
-        edge cleanup { from = destroy.outputs.value to = outputs.cleanup }
+        edge execution_data { from = execute.outputs.value to = execution.inputs.response }
+        edge cleanup_data { from = destroy.outputs.value to = cleanup.inputs.response }
+        edge execution { from = execution.outputs.value to = outputs.execution }
+        edge cleanup { from = cleanup.outputs.value to = outputs.cleanup }
     }
     -- Check native exit status after cleanup, so a nonzero exit still reaches destroy.
     postconditions = outputs.execution.exit_code == 0 and outputs.cleanup.destroyed == 1

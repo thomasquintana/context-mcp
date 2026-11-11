@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- Pin the embedded HTLK compiler/runtime to revision `1e405c49`, using its public
+  result-policy and immutable compilation-artifact interfaces. Existing HTLK SQLite
+  execution databases require an explicit deployment cutover; they are not reset
+  or migrated automatically.
+- Resolve the SQLite and MCP SDK advisory blockers through upstream HTLK's patched
+  bundled SQLite dependency and rmcp 3.9.0, preserving strict dependency gates.
+- Pin the standard SQLx facade to upstream PR #4502's exact Git revision, permitting
+  patched SQLite 0.39.x during dependency resolution. Retain SQLx's existing macros,
+  application queries and embedded migration execution.
+- Project uniform MCP tool-result envelopes explicitly in shipped operator/client
+  graphs, preserving application JSON outputs and opaque extraction checkpoints.
+- Verify envelope failure/large-result handling, offline evidence and fenced cleanup
+  through the native host; rerun actual backing services, both transports and 28
+  native format plus four media-selection cases with the upgraded embedded runtime.
+- Verify the explicitly authorized paid video/model Rust case and fresh HTTP/stdio
+  container journey, including real model conflict preservation, cited synthesis
+  and purge. Keep the paid fixture's model index distinct from its bootstrap vector
+  space, and give hosted instrumented transport startup a finite readiness deadline.
+- Allow bounded slow native MCP initialization for stdio providers, independently
+  of graph attempt deadlines, and preserve single-dispatch behavior across startup.
+
 - Deliver HTLK-owned user/agent call/upload CLI, operator provisioning/discovery/
   identity/membership/credential controls, authenticated content-resource templates,
   bounded HTTP concurrency and public/private S3 signing endpoints.

@@ -7,8 +7,11 @@ No model credential is required for the nonpaid verification campaign:
 
 ```sh
 cargo build --workspace --all-features --locked
+python3 tools/audit_release.py
 python3 tools/test_services.py
 python3 tools/verify.py --coverage
+python3 tools/notices.py --check
+python3 tools/release.py
 python3 tools/test_services.py --stop
 ```
 
@@ -18,13 +21,69 @@ Fixture service credentials are public development values. Configure the
 `CONTEXT_TEST_*` references to use existing isolated services; the scripts do not
 print token/model-secret values. Paid cases are explicitly excluded by name.
 
-The latest fresh-stack run passed47 Rust tests:21 regular tests and26 opt-in actual
-service/transport tests (including13 application campaigns,9 storage tests,2 identity
+The 2026-11-11 upgrade campaign passed 53 Rust tests: 26 regular tests and 27 opt-in actual
+service/transport tests (including 13 application campaigns, 10 storage tests, 2 identity
 tests, the native-host sandbox test and actual binary HTTP/stdio campaign). Additional
 checks passed fmt, strict all-target Clippy, strict rustdoc, advisory/license/source/
 dependency policy, the independent coverage-gate test, notice generation, core package
 archive verification and locked release compilation. CI workflow syntax was checked
-with actionlint1.7.12. GitHub CI execution itself occurs after push.
+with actionlint1.7.12, including the corrected CI workflow. GitHub CI results below
+are observed separately from these local results.
+The initial hosted coverage runs exposed the transport test's roughly ten-second
+startup allowance; its follow-up uses a finite 60-second wall-clock deadline while
+retaining actual readiness/process-exit assertions. Local targeted and full
+coverage campaigns pass with that test-only change.
+Subsequent hosted runs passed HTTP readiness but failed a later workflow operation.
+The native adapter's separate ten-second initialization limit was reproduced with
+an eleven-second-starting peer; a bounded 30-second native allowance passes that
+regression with exactly one tool dispatch and no retry. The shared transport-test
+observer also needed a finite 60-second wall-clock allowance to cover native startup
+and local processing; its former ten-second observation window was reproduced by
+the same regression, now located in the transport suite. Transport assertions report
+their caller location, logical role and redacted HTLK failure code.
+Slow hosted transport runs also exposed disposable bucket teardown leaving retired
+zero-byte upload fences after payload deletion. Teardown now explicitly verifies
+and removes only uploads/ content-free records in its own stopped test deployment;
+unexpected remaining payloads still fail. Production fences remain permanent.
+The subsequent hosted runs passed the full test/coverage/package stage and exposed
+an independent tool-installation error at the notice check: cargo-about 0.9.2's
+binary requires its `cli` feature. The CI install now explicitly enables that
+feature and prints the installed version. A clean pinned Rust Linux container
+reproduced the missing command with the old install, then installed cargo-about
+0.9.2 with `--features cli` and passed the unchanged locked notice comparison.
+
+Both complete hosted Linux/arm64 pipelines passed on commit `45dac37`, including
+strict checks, actual services, all coverage gates, notices, reproducible release,
+artifact upload and cleanup:
+
+- [Pull request run 43099143905](https://github.com/thomasquintana/context-mcp/actions/runs/43099143905)
+- [Push run 43099139020](https://github.com/thomasquintana/context-mcp/actions/runs/43099139020)
+
+## Embedded HTLK upgrade
+
+The verified dependency graph pins HTLK `1e405c495fc2e9b3b3fb812123f509178b08a9e5`,
+SQLx `10462fa4414c6c7f1ed1d39bb31678e3b726878c` and rmcp 3.9.0. HTLK resolves
+rusqlite 0.41.1/libsqlite3-sys 0.39.1 with patched bundled SQLite. SQLx remains the
+standard facade with its existing PostgreSQL/macros/migration features; its merged
+[upstream fix](https://github.com/launchbadge/sqlx/pull/4502) allows libsqlite3-sys 0.39.x in
+dependency resolution. Use this exact Git revision until a suitable registry release
+is verified. No advisory exception is configured.
+
+New regression cases compile every shipped graph, reject a synthetic schema-6 store
+without changing its bytes, and check uniform tool envelopes through the native host.
+The protocol fixture independently records dispatches, checks missing/invalid/error
+results and a 70-KB result, runs 70 discovery-only readiness lifetimes, and reopens
+terminal results with unavailable provider routing and zero added dispatches. The
+shipped extraction/cleanup graphs preserve the JSON checkpoint, destroy before a
+nonzero-exit postcondition failure, and deny revoked checkpoint reads. These are
+fixture-only protocol checks. Actual PostgreSQL additionally verifies that reopening
+a directory-created migration ledger through `sqlx::migrate!` leaves its complete
+entries, checksums and installation times unchanged.
+
+Actual service tests used an isolated `context-mcp-ci` stack on alternate ports 57432,
+61000/61001, 60108 and 60080; existing user containers and application data were not used.
+The retained-data SQLite/fingerprint cutover procedure is in
+[deployment.md](deployment.md#upgrading-the-embedded-htlk-runtime).
 
 ## Measured per-crate line coverage
 
@@ -37,11 +96,11 @@ attributes or test-only behavior are used.
 | --- | --- | --- |
 | context-core |210 /233|90.13%|
 | context-storage |916 /1001|91.51%|
-| context-workflows |723 /875|82.63%|
+| context-workflows |728 /881|82.63%|
 | context-auth |397 /421|94.30%|
 | context-engine |4370 /5110|85.52%|
 | context-process |199 /737|27.00%|
-| context-mcp |805 /1282|62.79%|
+| context-mcp |807 /1282|62.95%|
 
 The goal remains 99% meaningful production line coverage; it is **not yet reached**.
 CI enforces measured per-crate floors and uncovered-line budgets in
@@ -53,18 +112,30 @@ as covered lines. Raw JSON is written to target/coverage/coverage.json.
 
 ## Actual native formats and paid provider journeys
 
--28 reference format cases passed individual actual HTLK+sandbox extraction checks;
-  details/bounds and the completed-evidence/wrapper-timeout observation are preserved
-  in processing.md.
--4 actual PDF-page/image-region/video/audio selection cases passed independent size,
-  digest,16x16 crop and one-second duration checks; see context-services.md.
--The final **container** journey used actual initial providers, gpt-4.1, whisper-1
-  and text-embedding-3-small through unchanged HTLK. It passed HTTP video upload,
+- 28 reference format cases and 4 actual PDF-page/image-region/video/audio selection
+  cases passed again on 2026-11-11 with the final HTLK pin and unchanged processing
+  image, using `python3 tools/format_acceptance.py`. Independent size/digest, 16x16
+  crop and one-second duration checks passed. Evidence:
+  `target/providers/formats-hnl2i5wt/evidence.json`. No model calls were made.
+  Details and prior measured limits remain in processing.md/context-services.md.
+- After explicit user authorization on 2026-11-11, a fresh **container** journey used
+  actual initial providers, gpt-4.1, whisper-1 and text-embedding-3-small through the
+  upgraded HTLK runtime. It passed HTTP video upload,
   description/transcription/enrichment/embedding/publication, hybrid retrieval,
   native clip materialization, model-classified contradiction preservation, cited
   saved synthesis, transitive purge, then stdio ingest/query/purge in one retained
   client run. All MCP operations used the HTLK CLI or compiled client graph. The
   reference provider/container limitation remains the accepted receipt boundary.
+- The separately invoked paid Rust case
+  `actual_video_model_workflows_publish_independently_checked_evidence` also passed.
+  It checks at least two published chunks containing the known blue/ocean evidence,
+  finite 256-dimensional embeddings and exact Typesense document count. Its first
+  attempt stopped before ingestion because the old fixture reused a retained 3-D
+  collection identity for the real model space; the corrected test allocates a
+  distinct model collection. Production index-identity protections remain intact.
+  This is one additional opt-in paid Rust test, separate from the 53-test nonpaid
+  coverage campaign and the container journey; its uninstrumented execution is not
+  added to the coverage measurements above.
 
 Reproduce the opt-in paid journey with the configured model credential inherited:
 
@@ -73,20 +144,28 @@ python3 tools/deployment_acceptance.py
 ```
 
 It uses isolated alternate ports and removes only its own Compose project/volumes.
-Latest evidence: target/deployment/verified-f_n7k_au/evidence.json.
-Application image:
-`sha256:c0d69776d25a6149760a4282d13318a708452c62b6ffc0775048041fc1c4f862`.
+Latest paid evidence: `target/deployment/verified-ozka9ng1/evidence.json`.
+Application image reported by that campaign:
+`sha256:b7adc2e45760d8cd7f7ce1f97f2a39af66aea907dedbdda132ee633818f32de6`.
 Processing image:
 `sha256:707838fe31b4f8584ddb1f9e91c7fcef84cf7c760269e1262528c1b9c98b5407`.
-These are observed local identities, not claims of a published image registry.
+The application image was rebuilt from the upgraded branch using the locked
+dependency graph before invoking the campaign with `--skip-build`. Private staging
+was empty after purge and teardown; all 26 retained campaign files were checked for
+the privately loaded source model credential, with zero matches. These are observed local image
+identities, not claims of a published image registry.
+
+The original paid delivery evidence remains at
+`target/deployment/verified-f_n7k_au/evidence.json`, with application image
+`sha256:c0d69776d25a6149760a4282d13318a708452c62b6ffc0775048041fc1c4f862`.
 The initial model429 and mini-model incorrect-color result remain in integration-spike.md.
 
 ## Dependency, license and release gates
 
 `deny.toml` rejects unknown registries/Git sources, wildcard dependency requirements,
-unapproved licenses, yanked/advisory issues. HTLK is an explicitly permitted, exact
-Git revision. Duplicate transitive versions are visible warnings rather than hidden
-updates. Rust dependency notices are generated and checked with:
+unapproved licenses, yanked/advisory issues. HTLK and SQLx are explicitly permitted,
+exact upstream Git revisions. Duplicate transitive versions are visible warnings
+rather than hidden updates. Rust dependency notices are generated and checked with:
 
 ```sh
 python3 tools/notices.py

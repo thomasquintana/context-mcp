@@ -5,8 +5,9 @@ use context_core::{access::Permission, ids::JobId};
 use context_engine::bootstrap;
 use context_storage::postgres::Database;
 use context_workflows::host::{Config, Handle, JobGrant, State, WorkflowHost};
+use futures_util::TryStreamExt;
 use object_store::{
-    ObjectStoreExt,
+    ObjectStore, ObjectStoreExt,
     aws::AmazonS3Builder,
     path::Path,
     signer::{Method, Signer},
@@ -48,17 +49,23 @@ impl Drop for Process {
 }
 
 async fn result(host: &WorkflowHost, handle: &Handle) -> State {
-    for _ in 0..500 {
+    // Observation must cover the native client's bounded provider initialization
+    // plus local processing; a ten-second poll loop races slow stdio startup.
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    while std::time::Instant::now() < deadline {
         match host.inspect(handle).await {
             Ok(State::Running) => {}
             Ok(state) => return state,
             Err(context_workflows::host::Error::Runtime(error))
                 if error.code() == htlk::runtime::failure::FailureCode::Fenced => {}
-            _ => panic!("unexpected transport workflow failure"),
+            Err(error) => panic!("transport role {} inspection failed: {error}", handle.role),
         }
         actix::clock::sleep(Duration::from_millis(20)).await;
     }
-    panic!("transport workflow deadline exceeded")
+    panic!(
+        "transport workflow deadline exceeded for role {}",
+        handle.role
+    )
 }
 
 async fn call(host: &WorkflowHost, job: JobId, role: &str, request: Value) -> State {
@@ -69,10 +76,17 @@ async fn call(host: &WorkflowHost, job: JobId, role: &str, request: Value) -> St
     result(host, &handle).await
 }
 
+#[track_caller]
 fn succeeded(state: State) -> Value {
     match state {
         State::Succeeded(value) => value,
-        _ => panic!("expected successful application operation"),
+        State::Failed(code) => {
+            panic!("expected successful application operation; HTLK failed: {code}")
+        }
+        State::Cancelled => panic!("expected successful application operation; run was cancelled"),
+        State::Running => {
+            panic!("expected successful application operation; run is still executing")
+        }
     }
 }
 
@@ -105,10 +119,14 @@ ir_version = "0.1"
 graph acceptance.client_{role} {{
     inputs = {{ request = json }}
     outputs = {{ result = json }}
-    nodes {{ operation = call(mcp.tool("context","{tool}")) }}
+    nodes {{
+        operation = call(mcp.tool("context","{tool}"))
+        result = eval(json, inputs.response.data) {{ inputs = {{ response = McpToolResult }} }}
+    }}
     edges {{
         edge request {{ from = inputs.request to = operation.inputs.arguments }}
-        edge result {{ from = operation.outputs.value to = outputs.result }}
+        edge response {{ from = operation.outputs.value to = result.inputs.response }}
+        edge result {{ from = result.outputs.value to = outputs.result }}
     }}
     limits {{ max_mcp_calls = 1 }}
 }}
@@ -145,6 +163,39 @@ graph acceptance.content_resource {
     roles.insert("read_resource".into(),json!({"source":"client-read-resource.htlk","catalogs":dir.join(format!("context-{transport}.json"))}));
     serde_json::from_value(json!({"database":format!("{name}.sqlite"),"roles":roles,
         "endpoints":{"context-mcp":endpoint},"required_deployments":["context-mcp"],"workers":2,"max_runs":8})).unwrap()
+}
+
+#[test]
+fn slow_stdio_startup_preserves_the_first_operation_without_retry() {
+    actix::System::new().block_on(async {
+        let dir = tempfile::tempdir().unwrap();
+        let peer = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("crates/context-workflows/tests/fixtures/envelope_peer.py");
+        let config = client_config(dir.path(), "slow-start", json!({
+            "transport":"stdio", "program":"python3",
+            "arguments":[peer,dir.path().join("context-stdio.json"),dir.path().join("dispatch.jsonl")],
+            "environment":{"FIXTURE_STARTUP_DELAY_MS":"11000"},
+        }), "stdio");
+        let mut catalog = context_mcp::mcp::catalog("stdio");
+        for inventory in ["tools", "resources"] {
+            catalog[inventory]["servers"]["context"]["implementation_name"] = json!("envelope-fixture");
+            catalog[inventory]["servers"]["context"]["implementation_version"] = json!("1");
+        }
+        write(&dir.path().join("context-stdio.json"), &catalog);
+        let host = WorkflowHost::open(&config, dir.path(), &[]).await.unwrap();
+        let grant = JobGrant {
+            job:JobId::new(), principal:context_core::ids::PrincipalId::new(),
+            tenant:context_core::ids::TenantId::new(), assets:BTreeSet::new(),
+            roles:config.roles.keys().cloned().collect(), fingerprints:Default::default(), fenced:false,
+        };
+        host.grant_job(grant.clone()).unwrap();
+        assert_eq!(succeeded(call(&host, grant.job, "identity", json!({})).await),
+            json!({"marker":"independent literal evidence"}));
+        host.shutdown().await.unwrap();
+        let facts = std::fs::read_to_string(dir.path().join("dispatch.jsonl")).unwrap();
+        let dispatches:Vec<Value> = facts.lines().map(|line|serde_json::from_str(line).unwrap()).collect();
+        assert_eq!(dispatches, vec![json!({"name":"context_identity","case":"success"})]);
+    });
 }
 
 #[test]
@@ -228,7 +279,10 @@ graph fixture.{role} {{
         let http=reqwest::Client::builder().timeout(Duration::from_secs(1)).build().unwrap();
         let base=format!("http://{address}");
         let mut ready=false;
-        for _ in 0..100 {
+        // Instrumented hosted startup includes tokenizer/index initialization;
+        // bound wall-clock time rather than assuming 100 quick polls are enough.
+        let startup_deadline=std::time::Instant::now()+Duration::from_secs(60);
+        while std::time::Instant::now()<startup_deadline {
             if http.get(format!("{base}/health/ready")).send().await.is_ok_and(|r|r.status().is_success()){ready=true;break;}
             assert!(process.0.try_wait().unwrap().is_none(),"actual server exited during startup");
             actix::clock::sleep(Duration::from_millis(100)).await;
@@ -333,9 +387,11 @@ graph acceptance.stdio_roundtrip {
     outputs = { result = json }
     nodes {
         arguments = eval(json, {collection = inputs.request.collection,name = inputs.request.name,text = inputs.request.text,idempotency_key = inputs.request.idempotency_key}) {inputs = {request = json}}
-        ingest = call(mcp.tool("context","context_ingest_text"))
+        ingest_call = call(mcp.tool("context","context_ingest_text"))
+        ingest = eval(json, inputs.response.data) {inputs = {response = McpToolResult}}
         duplicate_arguments = eval(json, {collection = inputs.request.collection,name = inputs.request.name,text = inputs.request.text,idempotency_key = inputs.request.idempotency_key}) {inputs = {request = json,first = json}}
-        duplicate = call(mcp.tool("context","context_ingest_text"))
+        duplicate_call = call(mcp.tool("context","context_ingest_text"))
+        duplicate = eval(json, inputs.response.data) {inputs = {response = McpToolResult}}
         poll = loop {
             inputs = {receipt = json}
             outputs = {progress = json}
@@ -343,11 +399,13 @@ graph acceptance.stdio_roundtrip {
             body {
                 nodes {
                     arguments = eval(json, {job = inputs.receipt.job}) {inputs = {receipt = json}}
-                    inspect = call(mcp.tool("context","context_job_status"))
+                    inspect_call = call(mcp.tool("context","context_job_status"))
+                    inspect = eval(json, inputs.response.data) {inputs = {response = McpToolResult}}
                 }
                 edges {
                     edge receipt {from = carried.receipt to = arguments.inputs.receipt}
-                    edge arguments {from = arguments.outputs.value to = inspect.inputs.arguments}
+                    edge arguments {from = arguments.outputs.value to = inspect_call.inputs.arguments}
+                    edge data {from = inspect_call.outputs.value to = inspect.inputs.response}
                     edge progress {from = inspect.outputs.value to = outputs.progress}
                     edge next {from = carried.receipt to = next.receipt}
                 }
@@ -356,19 +414,23 @@ graph acceptance.stdio_roundtrip {
             max_iterations = 100
         }
         query_arguments = eval(json, {scope = {kind = "workspace",id = inputs.request.workspace},query = "transport fixture"}) {inputs = {request = json,progress = json}}
-        query = call(mcp.tool("context","context_query"))
+        query_call = call(mcp.tool("context","context_query"))
+        query = eval(json, inputs.response.data) {inputs = {response = McpToolResult}}
         result = eval(json, {admitted = inputs.admitted,duplicate = inputs.duplicate,progress = inputs.progress,context = inputs.context}) {inputs = {admitted = json,duplicate = json,progress = json,context = json}}
     }
     edges {
         edge request {from = inputs.request to = arguments.inputs.request}
-        edge arguments {from = arguments.outputs.value to = ingest.inputs.arguments}
+        edge arguments {from = arguments.outputs.value to = ingest_call.inputs.arguments}
+        edge ingest_data {from = ingest_call.outputs.value to = ingest.inputs.response}
         edge request_again {from = inputs.request to = duplicate_arguments.inputs.request}
         edge first {from = ingest.outputs.value to = duplicate_arguments.inputs.first}
-        edge duplicate_arguments {from = duplicate_arguments.outputs.value to = duplicate.inputs.arguments}
+        edge duplicate_arguments {from = duplicate_arguments.outputs.value to = duplicate_call.inputs.arguments}
+        edge duplicate_data {from = duplicate_call.outputs.value to = duplicate.inputs.response}
         edge receipt {from = duplicate.outputs.value to = poll.inputs.receipt}
         edge query_request {from = inputs.request to = query_arguments.inputs.request}
         edge progress {from = poll.outputs.progress to = query_arguments.inputs.progress}
-        edge query_arguments {from = query_arguments.outputs.value to = query.inputs.arguments}
+        edge query_arguments {from = query_arguments.outputs.value to = query_call.inputs.arguments}
+        edge query_data {from = query_call.outputs.value to = query.inputs.response}
         edge admitted {from = ingest.outputs.value to = result.inputs.admitted}
         edge duplicate {from = duplicate.outputs.value to = result.inputs.duplicate}
         edge result_progress {from = poll.outputs.progress to = result.inputs.progress}
@@ -393,6 +455,18 @@ graph acceptance.stdio_roundtrip {
         sqlx::query("DELETE FROM context.objects WHERE content IN(SELECT id FROM context.content WHERE workspace=$1)")
             .bind(Uuid::from(initial.workspace)).execute(db.pool()).await.unwrap();
         sqlx::query("DELETE FROM context.resources WHERE id=ANY($1)").bind(vec![Uuid::from(initial.tenant),Uuid::from(foreign.tenant)]).execute(db.pool()).await.unwrap();
+        // Fast runs may finish before upload retirement. Include an opaque,
+        // content-free fence so disposable-bucket teardown is exercised reliably.
+        objects.put(&Path::from(format!("uploads/{}",Uuid::now_v7())),object_store::PutPayload::new()).await.unwrap();
+        // All writers are stopped and this bucket belongs only to this test.
+        // Production upload fences are permanent; only disposable teardown may
+        // remove them. Any unexpected payload remains a test failure.
+        let remaining=objects.list(None).try_collect::<Vec<_>>().await.unwrap();
+        for object in remaining {
+            assert_eq!(object.size,0,"only content-free upload fences may remain");
+            assert!(object.location.as_ref().starts_with("uploads/"),"unexpected remaining object namespace");
+            objects.delete(&object.location).await.unwrap();
+        }
         let delete_bucket=objects.signed_url(Method::DELETE,&Path::from(""),Duration::from_secs(60)).await.unwrap();
         assert!(setup.delete(delete_bucket).send().await.unwrap().status().is_success());
         assert!(setup.delete(format!("{typesense}/collections/{index}")).header("X-TYPESENSE-API-KEY",index_key).send().await.unwrap().status().is_success());

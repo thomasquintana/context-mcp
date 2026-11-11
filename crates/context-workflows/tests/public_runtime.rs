@@ -95,6 +95,39 @@ fn unknown_operator_configuration_is_rejected() {
 }
 
 #[test]
+fn incompatible_execution_store_is_rejected_without_rewriting_history() {
+    let (dir, config) = fixture();
+    let path = dir.path().join("runtime.sqlite");
+    // Independent SQLite writer creates a synthetic legacy header and sentinel,
+    // without copying or depending on HTLK's private table layout.
+    assert!(
+        std::process::Command::new("python3")
+            .arg("-c")
+            .arg(
+                "import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); \
+                 db.executescript(\"PRAGMA application_id=1213484107; PRAGMA user_version=6; \
+                 CREATE TABLE retained_evidence(value TEXT); \
+                 INSERT INTO retained_evidence VALUES('unchanged legacy history');\"); db.close()",
+            )
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let before = std::fs::read(&path).unwrap();
+    actix::System::new().block_on(async {
+        let Err(error) = run(&config, dir.path()).await else {
+            panic!("legacy store must not be accepted")
+        };
+        assert_eq!(
+            error.downcast_ref::<htlk::runtime::store::StoreError>(),
+            Some(&htlk::runtime::store::StoreError::Schema)
+        );
+    });
+    assert_eq!(std::fs::read(path).unwrap(), before);
+}
+
+#[test]
 fn admitted_media_sized_json_survives_typed_validation_and_artifact_read() {
     let (dir, mut config) = fixture();
     std::fs::write(

@@ -25,6 +25,19 @@ authorized job records before launching execution. Changing executable policies 
 removing required old role revisions requires draining/migrating those jobs through
 an explicit supported deployment procedure.
 
+The HTLK `1e405c49` upgrade requires a fresh schema-13 execution store after old
+work is fully settled; schema-6 stores cannot be reopened. See the retained-data
+[cutover procedure](deployment.md#upgrading-the-embedded-htlk-runtime), including
+pending uploads, cleanup and legacy retry restrictions. There is no automatic
+cross-version run migration or fingerprint substitution.
+
+Tool calls return native `McpToolResult` envelopes. Operator graphs accept those
+typed responses and explicitly project their selected `.data` into role JSON.
+Required data must be present; HTLK's default declared-schema enforcement remains
+enabled. `extract.htlk` keeps the declared `create` checkpoint as a JSON projection
+with the original opaque `id`, so the cleanup role receives its existing shape.
+Raw envelopes/evidence are retained by HTLK, not copied into published knowledge.
+
 ## Trusted job authority
 
 Application grants also freeze exact role fingerprints; startup rejects a retained
@@ -65,11 +78,20 @@ revocation before using this host. The host is not a replacement for resource AC
 - Bounded in-process workers/runs using HTLK's existing engine.
 - Default role execution: 30-minute run, 120-second attempt, four concurrent calls;
   4MB evaluator value/output bounds and 64M deterministic steps.
+- Native MCP connection initialization and descriptor discovery have a finite
+  30-second allowance, including a stdio provider's startup work. Per-attempt/run
+  deadlines remain independent; slow startup does not authorize a retry or replay.
 - Start returns a durable handle without waiting for completion. Stable keys bridge
   admission/recovery; inspection distinguishes running/succeeded/failed/cancelled.
 - Only accepted object-valued results cross into application publication.
 - Shutdown stops host admission, engine and native sessions, preserving execution
   history. The application drains request/worker ownership before shutdown.
+- The native client retains at most 4096 owner identities during one host lifetime,
+  including readiness lifetimes and workflow runs. This is separate from concurrent
+  runs/requests: retired transports release active session capacity, while generation
+  fences are never evicted. At the bound new owners fail closed; operators must
+  gracefully restart the single instance with the same store/configuration. Existing
+  durable work keeps its handles and authority. No automatic owner-fence reset occurs.
 
 Sandbox cleanup continues to use ordinary operator graphs and successful provider
 receipts, per the user's accepted boundary. No direct provider calls, custom MCP

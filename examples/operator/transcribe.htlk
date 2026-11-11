@@ -5,7 +5,7 @@ graph operator.transcribe {
     nodes {
         arguments = eval(json, { model = "whisper-1", file = { filename = "audio.wav", mime_type = inputs.request.media_type, data_base64 = inputs.request.data_base64 }, response_format = "json" }) { inputs = { request = json } }
         transcribe = call(mcp.tool("llm", "transcribe"))
-        result = eval(json, { text = inputs.response.text }) { inputs = { response = json } }
+        result = eval(json, { text = inputs.response.data.text }) { inputs = { response = McpToolResult } }
     }
     edges {
         edge request { from = inputs.request to = arguments.inputs.request }

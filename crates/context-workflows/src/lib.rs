@@ -160,7 +160,9 @@ fn adapter(endpoints: &BTreeMap<String, Endpoint>) -> Result<Arc<NativeMcpAdapte
         .iter()
         .map(|(name, endpoint)| Ok((name.clone(), endpoint.resolve()?)))
         .collect::<Result<_>>()?;
-    Ok(Arc::new(NativeMcpAdapter::new(endpoints, 10_000)?))
+    // A stdio provider may initialize tokenizers/indexes before answering MCP.
+    // Keep negotiation bounded independently of the graph's attempt deadline.
+    Ok(Arc::new(NativeMcpAdapter::new(endpoints, 30_000)?))
 }
 
 /// Export complete selected descriptors using HTLK's existing discovery API.
@@ -212,7 +214,8 @@ pub async fn discover(config: &DiscoveryConfig) -> Result<serde_json::Value> {
                     McpBindingKind::Tool {
                         name: tool.clone(),
                         input_schema: provisional,
-                        output_schema: provisional,
+                        output_schema: None,
+                        result_policy: Box::default(),
                     },
                     &limits,
                 )?;
@@ -320,7 +323,8 @@ pub fn compiler(limits: &Limits) -> Result<(Compiler, NativeRegistry)> {
                 max_steps: 4_000_000,
             },
             maximum_scope_depth: 32,
-            maximum_expanded_nodes: 1000,
+            // Explicit envelope projections also expand inside bounded polling loops.
+            maximum_expanded_nodes: 2000,
         },
         limits,
     )?;
@@ -330,6 +334,8 @@ pub fn compiler(limits: &Limits) -> Result<(Compiler, NativeRegistry)> {
         profile,
         policy,
         libraries: BTreeMap::new(),
+        mcp_result_policies: BTreeMap::new(),
+        mcp_result_documents: BTreeMap::new(),
         limits: limits.clone(),
         frontend: FrontendLimits::default(),
         schema_options: analyzer::NativeSchemaOptions::default(),

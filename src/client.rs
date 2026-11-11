@@ -47,8 +47,15 @@ ir_version = "0.1"
 graph client.{name} {{
     inputs = {{request = json}}
     outputs = {{result = json}}
-    nodes {{operation = call(mcp.tool("context","{name}"))}}
-    edges {{edge request {{from = inputs.request to = operation.inputs.arguments}} edge result {{from = operation.outputs.value to = outputs.result}}}}
+    nodes {{
+        operation = call(mcp.tool("context","{name}"))
+        result = eval(json, inputs.response.data) {{inputs = {{response = McpToolResult}}}}
+    }}
+    edges {{
+        edge request {{from = inputs.request to = operation.inputs.arguments}}
+        edge response {{from = operation.outputs.value to = result.inputs.response}}
+        edge result {{from = result.outputs.value to = outputs.result}}
+    }}
     limits {{max_mcp_calls = 1}}
 }}
 "#

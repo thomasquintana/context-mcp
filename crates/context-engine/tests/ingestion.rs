@@ -653,10 +653,16 @@ fn actual_video_model_workflows_publish_independently_checked_evidence() {
         })).unwrap();
         fixture.config.workflows.required_deployments=BTreeSet::from(["initial-model-provider".into(),"initial-sandbox-provider".into()]);
         let data=fixture.config.data.as_mut().unwrap();let mut space=data.spaces.remove("test").unwrap();space.dimensions=256;
+        // A real embedding space needs its own collection; never rebind the pure
+        // fixture's retained 3-D collection identity to a different model/space.
+        let model_index=format!("{}_model",fixture.index);space.collection=model_index.clone();
         let name="text-embedding-3-small:256:v1";data.spaces.insert(name.into(),space);data.default_space=name.into();
         for profile in data.profiles.values_mut(){profile.space=name.into();}
         let profile=data.profiles.get_mut("default").unwrap();profile.cleanup_node=Some("create".into());profile.describe_role=Some("describe".into());profile.transcribe_role=Some("transcribe".into());profile.media_types.insert("video/mp4".into());
         assert!(fixture.http.delete(format!("{}/collections/{}",fixture.typesense,fixture.index)).header("X-TYPESENSE-API-KEY",&fixture.index_key).send().await.unwrap().status().is_success());
+        sqlx::query("DELETE FROM context.index_bindings WHERE endpoint=$1 AND collection=$2")
+            .bind(&fixture.typesense).bind(&fixture.index).execute(fixture.db.pool()).await.unwrap();
+        fixture.index=model_index;
         fixture.app=Arc::new(Application::open(&fixture.config,fixture._dir.path()).await.unwrap());fixture.app.start_workers().await.unwrap();
         let bytes=std::fs::read(std::env::var("CONTEXT_TEST_VIDEO_FIXTURE").expect("synthetic blue video with known speech")).unwrap();
         let hash=Sha256::digest(&bytes).iter().map(|b|format!("{b:02x}")).collect::<String>();

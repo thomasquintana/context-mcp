@@ -31,8 +31,8 @@ Target: HTLK `521f795d913ae3e13938b8ed0fe19728d2babce6` (reviewed upstream main)
 
 1. **Branch and working plan — completed.** Create branch, save this plan, and
    record its alignment protocol in AGENTS.md. Verification: clean starting status,
-   reviewed recent history, branch/path inspected; release audit below before commit.
-2. **Dependency/public APIs — pending.** Pin target HTLK; refresh Cargo.lock; add
+    reviewed recent history, branch/path inspected; release audit and diff check passed.
+2. **Dependency/public APIs — completed.** Pin target HTLK; refresh Cargo.lock; add
    compiler policy/document fields, optional output schemas/result policies;
    detach owned compilation artifacts via `into_artifact()`. Review native session
    and execution defaults and fail-closed authorization. Compile workspace/examples/
@@ -79,7 +79,16 @@ paid-test authorization. Remove only this campaign's disposable backing services
 
 - Setup: repository started clean on `main`; created `feat/htlk-runtime-upgrade`.
   Plan stored at the user-requested temporary path. No application data touched.
+- Task 2: exact target pin and public constructor/artifact updates compile with
+  `cargo check --workspace --all-targets --all-features`. All 21 ordinary Rust
+  tests and doctests pass with `cargo test --workspace --all-features --locked`;
+  `cargo fmt --all --check` passes. Native default policies remain enforced,
+  callback services uninstalled, replay authority false and unknown authorization
+  variants denied. Production engine retains its intentional single-store scope.
+  Dependency graph removes unused upstream SDK/parser dependencies; notices refresh
+  remains task 6. New native client lifetime owner bound (4096 by default) must be
+  documented/checked during task 5; retired transport capacity is separate.
 
 ## Current next action
 
-Verify and commit setup; begin task 2 against the exact target revision.
+Commit verified task 2, then migrate graph envelopes in task 3.

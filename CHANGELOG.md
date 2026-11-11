@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Pin the embedded HTLK compiler/runtime to revision `521f795d`, using its public
+  result-policy and immutable compilation-artifact interfaces. Existing HTLK SQLite
+  execution databases require an explicit deployment cutover; they are not reset
+  or migrated automatically.
+
 - Deliver HTLK-owned user/agent call/upload CLI, operator provisioning/discovery/
   identity/membership/credential controls, authenticated content-resource templates,
   bounded HTTP concurrency and public/private S3 signing endpoints.

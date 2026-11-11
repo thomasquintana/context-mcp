@@ -343,7 +343,8 @@ impl WorkflowHost {
             let source = std::str::from_utf8(&source).map_err(|_| Error::Configuration)?;
             let compiled = compiler
                 .compile_source(source, &catalogs)
-                .map_err(|_| Error::Configuration)?;
+                .map_err(|_| Error::Configuration)?
+                .into_artifact();
             let fields = compiled.canonical_document.fields();
             let root = fields
                 .scopes
@@ -920,6 +921,8 @@ fn production_compiler(limits: &Limits) -> crate::Result<(Compiler, NativeRegist
             profile,
             policy,
             libraries: BTreeMap::new(),
+            mcp_result_policies: BTreeMap::new(),
+            mcp_result_documents: BTreeMap::new(),
             limits: limits.clone(),
             frontend: FrontendLimits::default(),
             schema_options: analyzer::NativeSchemaOptions::default(),

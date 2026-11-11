@@ -58,6 +58,16 @@ Initial reviewed integration target: `521f795d913ae3e13938b8ed0fe19728d2babce6`.
 7. **Final review and PR — completed.** Read plan, review all commits/base diff,
    confirm intended changes committed and no secrets, push this branch and create a
    new PR. Return PR URL and actual local/remote verification status.
+8. **Authorized paid model campaigns — in progress.** User explicitly requested
+   paid tests after PR creation. Obtain the configured credential by environment or
+   private-file reference without exposing it. Build the application container from
+   this branch; run `tools/deployment_acceptance.py` against isolated services and
+   real gpt-4.1/whisper-1/text-embedding-3-small through HTLK. Also run the explicit
+   paid Rust video/model case if its configured local-provider prerequisites exist.
+   Verify actual published evidence, vectors, model outcomes, citations, purge and
+   both transports; accept normal sandbox destroy receipts under the existing
+   provider boundary. Record exact evidence/images and failures, clean only owned
+   services, update permanent docs, commit and push results to PR #1.
 
 ## Verification commands
 
@@ -188,6 +198,15 @@ paid-test authorization. Remove only this campaign's disposable backing services
   GitHub quality workflows were IN_PROGRESS at the observed remote check; local
   verification passes are not claimed as completed remote CI. Completion record
   is committed/pushed with the same task-delivery workflow.
+- Task 8 preparation: user explicitly authorized paid tests and identified `.env`
+  credentials. No `.env` is present in context-mcp; the existing provider reference
+  `../llm-mcp/.env` contains the required model key. Checked presence without
+  displaying its value; load only the required key privately for test subprocesses.
+  Built this branch's application image from deploy/Dockerfile with locked deps:
+  `sha256:c9366f98e2af3950b0dde88550390c486e41ffbb6c61fa1f0e6f21c843b766a9`.
+  Pinned unchanged model provider and sandbox layers were used. Existing processing
+  image is `sha256:707838fe31b4f8584ddb1f9e91c7fcef84cf7c760269e1262528c1b9c98b5407`.
+  No application data or existing service containers modified during preparation.
 
 ## Current next action
 
@@ -195,6 +214,9 @@ User reported updated HTLK; reviewed merged upstream PR #23 at 1e405c49. It pins
 rusqlite 0.41.1 with patched bundled SQLite, replaces affected tokio-rusqlite with
 an upstream-private connection worker, preserves public APIs/schema 13 and changes
 native/executable fingerprints. Upstream dependency/quality/line/branch CI passed.
-All planned implementation, local verification and PR-delivery tasks are complete.
-PR #1 is open; report its URL and actual remote CI state. The paid provider campaign
-remains intentionally uninvoked, with historical evidence retained in permanent docs.
+Original implementation/verification/PR tasks are complete. Follow explicitly
+authorized task 8: preparation is verified; run the paid deployment campaign using
+the freshly rebuilt image (`--skip-build`) and privately loaded provider `.env`
+credential. Keep actual requests HTLK-owned and secret values out of output. Then
+run the existing paid Rust application case if configured prerequisites are present,
+record measured evidence, commit and update PR #1.

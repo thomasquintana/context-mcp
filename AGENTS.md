@@ -7,7 +7,15 @@ Read the permanent requirements and measured evidence before changing behavior:
 `docs/deployment.md` records CLI/container operation. Use Git history for completed
 delivery checkpoints; the temporary implementation plan has been retired.
 
-## Active HTLK upgrade
+## Active user-guide documentation
+
+During `docs/human-user-guide`, consult
+`.opencode/.tmp/plans/human-user-guide.md` after every compaction, before choosing
+work, after every task, and for general guidance. Update the plan after each task
+with completion evidence and follow-ups. Commit every completed verified task.
+Finish with all intended changes committed and a new pull request.
+
+## HTLK upgrade alignment
 
 During `feat/htlk-runtime-upgrade`, consult
 `.opencode/.tmp/plans/htlk-runtime-upgrade.md` after every compaction, before choosing

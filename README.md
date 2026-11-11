@@ -3,6 +3,11 @@
 A Rust context engine for agents: multimodal evidence, navigable context maps,
 versioned semantic memory, and cited synthesis. Apache-2.0.
 
+**Start here: [User guide](docs/user-guide.md)** — connect an assistant or CLI,
+complete your first ingestion-to-cited-answer workflow, manage memory and sharing,
+and install or operate a server. Includes complete tool/CLI references and
+troubleshooting for human users and operators.
+
 **Implementation status:** the planned service and delivery surfaces are implemented:
 authenticated HTTP/stdio MCP and CLI, verified uploads/exact URLs, durable multimodal
 processing, hybrid budgeted context maps/navigation, immutable semantic memories,

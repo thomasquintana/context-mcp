@@ -1,5 +1,9 @@
 # Deployment and user CLI
 
+For a step-by-step setup, client connection instructions, everyday workflows and
+complete command references, start with the [human user guide](user-guide.md).
+This document retains the concise deployment and runtime-cutover contracts.
+
 ## Runtime layout
 
 One `context-mcp` instance owns authoritative PostgreSQL state, rebuildable Typesense

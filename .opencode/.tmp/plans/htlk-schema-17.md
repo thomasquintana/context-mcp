@@ -32,10 +32,15 @@ each completed, verified task. Push the committed branch and open a new PR.
    The published and upstream-main `object_store` still require `chrono`; tracked
    upstream in apache/arrow-rs-object-store#909. Keep the strict gate intact;
    independently run the functional parts of verification if it stops at that gate.
-3. **Retained-state cutover — pending.** Test schema-13 rejection without altering
-   history and same-version reopening/idempotency. Rehearse the cutover with a
-   disposable deployment, retained application data, and no duplicate dispatch.
-   Update the deployment/workflow-host/user guides and changelog.
+3. **Retained-state cutover — complete.** Synthetic schemas 6 and 13 are rejected
+   byte-for-byte unchanged; current-version idempotent reopen and offline
+   no-dispatch tests pass. The two-binary transport rehearsal passed using an actual
+   schema-13 executable built from `8ea4fe7`: legacy HTTP upload/publication, schema
+   rejection and byte comparison, new stdio serving with a fresh execution file,
+   reading the same exact published evidence, and new ingestion with one receipt.
+   Both binaries used real disposable PostgreSQL/MinIO/Typesense and pure fixture
+   workflow roles. Updated deployment/workflow-host/user docs and changelog;
+   strict Clippy, fmt and tracked-input audit pass.
 4. **Release verification — pending.** Run locked build, tracked-input audit,
    strict checks and coverage through `tools/verify.py --coverage` with actual
    services, `tools/notices.py --check`, and `tools/release.py`. Preserve coverage
@@ -46,7 +51,8 @@ each completed, verified task. Push the committed branch and open a new PR.
 
 ## Next action
 
-Test and document the retained-state cutover. The real schema-13 baseline executable
-was built from a detached worktree at `8ea4fe7`. Owned `context-mcp-ci` is ready on
-ports 57432, 61000/61001, 60108 and 60080. Use system CA roots for Python downloads
+Run verification on the owned `context-mcp-ci` services (ports 57432, 61000/61001,
+60108 and 60080). The unchanged advisory gate remains blocked by the baseline
+maintenance advisory. Run the remaining test/coverage/package commands separately
+if needed and record the distinction. Use system CA roots for Python downloads
 on this host (`SSL_CERT_FILE=/etc/ssl/cert.pem`).

@@ -103,11 +103,12 @@ the purge policy; versioned payload storage is rejected.
 
 ## Upgrading the embedded HTLK runtime
 
-The upgrade from HTLK `3448acb5` to `1e405c49` changes its private SQLite schema
-from 6 to 13 and changes executable/native implementation fingerprints. The new
-runtime rejects old execution databases; startup never migrates, deletes or resets
-them. PostgreSQL application records, payload storage and the derived search index
-remain separate. Use a maintenance cutover for retained application data:
+The upgrade from HTLK `1e405c49` to `e6fa8c15` changes its private SQLite schema
+from 13 to 17 and changes executable/native implementation fingerprints. The new
+runtime rejects older execution databases, including schema 6 from before the
+previous upgrade; startup never migrates, deletes or resets them. PostgreSQL
+application records, payload storage and the derived search index remain separate.
+Use a maintenance cutover for retained application data:
 
 1. Keep the old binary/image, configuration, catalogs and processing profiles
    available. Stop new user/agent admission at the deployment boundary while the old
@@ -127,10 +128,12 @@ remain separate. Use a maintenance cutover for retained application data:
 4. Preserve the stopped deployment's old SQLite database and any associated WAL/SHM
    files together with its exact binary/configuration. Retain this protected history
    for inspection with that matching binary; it stays outside application purge scope.
-   Select a **new, unused** `application.workflows.database` path for schema 13.
+   Select a **new, unused** `application.workflows.database` path for schema 17.
    Keep PostgreSQL, S3, Typesense and permanent zero-byte upload fences intact.
-5. Install the upgraded operator graphs and exact provider catalogs. Keep model/space
-   identities consistent with retained vectors. Start the one upgraded instance and
+5. Install the upgraded binary/image with the operator graphs and exact provider
+   catalogs. No graph or catalog rewrite is required for this upgrade, but the
+   same graph sources compile to new fingerprints. Keep model/space identities
+   consistent with retained vectors. Start the one upgraded instance and
    verify readiness, authorized reads of existing published evidence/memory, and new
    upload/processing/query/purge operations. A same-version restart reuses its new
    store and saved handles normally.

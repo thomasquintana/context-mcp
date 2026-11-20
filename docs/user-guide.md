@@ -1889,8 +1889,9 @@ and assume it remains compatible. Both enabled and suspended history are rejecte
 
 ### Upgrade an incompatible HTLK execution store
 
-The recorded upgrade from HTLK SQLite schema 6 to 13 has no automatic migration or
-reset. Follow [the full retained-data cutover](deployment.md#upgrading-the-embedded-htlk-runtime).
+The upgrade to HTLK `e6fa8c15` moves the execution database from SQLite schema 13
+to 17 with no automatic migration or reset. Follow
+[the full retained-data cutover](deployment.md#upgrading-the-embedded-htlk-runtime).
 In summary:
 
 1. Preserve the old binary/image, graphs, catalogs, profiles, and configuration.
@@ -1900,9 +1901,9 @@ In summary:
    cleanup still requiring the old runtime blocks cutover; resume it to settle that work.
 4. Preserve its SQLite database and associated WAL/SHM files with the matching
    binary/configuration. Select a **new unused** SQLite path for the upgraded runtime.
-5. Keep PostgreSQL, S3, Typesense, and permanent upload fences intact. Install
-   upgraded graphs/catalogs, start the one replacement, and verify retained reads
-   and explicitly authorized new operations.
+5. Keep PostgreSQL, S3, Typesense, and permanent upload fences intact. Install the
+   new binary with your exact graphs/catalogs, start the one replacement, and
+   verify retained reads and explicitly authorized new operations.
 
 Legacy failed jobs cannot silently retry with new role fingerprints. Reprocess a
 published source explicitly or resubmit original input as a new operation/key.

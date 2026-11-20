@@ -53,11 +53,14 @@ each completed, verified task. Push the committed branch and open a new PR.
    full rerun passed including Keycloak, actual sandbox metadata, transport and
    purge. Removed the owned service containers/volumes and detached baseline
    worktree, leaving other services in place. Evidence is in verification.md.
-5. **Final review and PR — pending.** Review complete base diff and branch history,
-   confirm clean committed state, push, create a PR against main, and report its
-   URL and observed hosted checks.
+5. **Final review and PR — complete.** Reviewed the full diff and every delivery
+   commit against freshly fetched `origin/main`; tracked-input audit and diff
+   checks passed. Pushed `feat/htlk-schema-17` and opened
+   [PR #3](https://github.com/thomasquintana/context-mcp/pull/3) against `main`.
+   Hosted quality was queued/in progress when first checked; no hosted pass is
+   claimed. The PR documents both independently reproduced baseline advisories.
 
 ## Next action
 
-Review the complete diff and commit range, push and open the pull request. Report
-the advisory blocker and observed hosted status without changing policy.
+The upgrade is delivered in PR #3. The dependency gate remains a merge blocker
+until the baseline advisory findings are resolved.

@@ -23,10 +23,15 @@ each completed, verified task. Push the committed branch and open a new PR.
 1. **Branch and plan — complete.** Started from clean GitHub main `8ea4fe7` and
    created `feat/htlk-schema-17`. Read permanent contracts and verified upstream
    main still points at the planned revision. Record branch-specific alignment.
-2. **Dependency and compatibility — pending.** Pin HTLK, refresh lock/notices,
-   verify the resolved SQLite/SQLx graph, compile all targets, and test the existing
-   public host, graph suite and authorization/checkpoint behavior. Change existing
-   integration code only if a verified compatibility regression warrants it.
+2. **Dependency and compatibility — complete.** Pinned SQLite-only HTLK; the lock
+   changes only five HTLK source entries and regenerated notices match. The locked
+   build, all-target check, 26 ordinary tests (including all shipped graphs and
+   host authorization/checkpoint/offline replay), and license/source/bans checks
+   pass. No host/graph adaptation was needed. The advisory check fails on existing
+   `chrono` RUSTSEC-2026-0543; independently reproduced it on unchanged `8ea4fe7`.
+   The published and upstream-main `object_store` still require `chrono`; tracked
+   upstream in apache/arrow-rs-object-store#909. Keep the strict gate intact;
+   independently run the functional parts of verification if it stops at that gate.
 3. **Retained-state cutover — pending.** Test schema-13 rejection without altering
    history and same-version reopening/idempotency. Rehearse the cutover with a
    disposable deployment, retained application data, and no duplicate dispatch.
@@ -41,4 +46,7 @@ each completed, verified task. Push the committed branch and open a new PR.
 
 ## Next action
 
-Pin upstream HTLK and verify the locked dependency graph and public integration.
+Test and document the retained-state cutover. The real schema-13 baseline executable
+was built from a detached worktree at `8ea4fe7`. Owned `context-mcp-ci` is ready on
+ports 57432, 61000/61001, 60108 and 60080. Use system CA roots for Python downloads
+on this host (`SSL_CERT_FILE=/etc/ssl/cert.pem`).

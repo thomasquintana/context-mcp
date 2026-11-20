@@ -41,18 +41,23 @@ each completed, verified task. Push the committed branch and open a new PR.
    Both binaries used real disposable PostgreSQL/MinIO/Typesense and pure fixture
    workflow roles. Updated deployment/workflow-host/user docs and changelog;
    strict Clippy, fmt and tracked-input audit pass.
-4. **Release verification — pending.** Run locked build, tracked-input audit,
-   strict checks and coverage through `tools/verify.py --coverage` with actual
-   services, `tools/notices.py --check`, and `tools/release.py`. Preserve coverage
-   budgets. Record new evidence separately, stop only owned services, and commit.
+4. **Release verification — complete with a baseline advisory blocker.** Locked
+   build, tracked-input audit, strict fmt/Clippy/rustdoc, license/source/bans,
+   notice comparison, package and full deterministic release pass. The combined
+   verifier stops on maintenance advisories RUSTSEC-2026-0543 (`chrono`) and
+   RUSTSEC-2026-0542 (`humantime`), both confirmed on the unchanged baseline too.
+   The published `object_store` release still uses both (upstream issue 909 and
+   PR 908). Ran the remaining verifier commands independently and all 53 nonpaid
+   tests passed under coverage, with no budget changes. The first coverage run saw
+   an OOM-killed disposable Keycloak; after restarting only that container, the
+   full rerun passed including Keycloak, actual sandbox metadata, transport and
+   purge. Removed the owned service containers/volumes and detached baseline
+   worktree, leaving other services in place. Evidence is in verification.md.
 5. **Final review and PR — pending.** Review complete base diff and branch history,
    confirm clean committed state, push, create a PR against main, and report its
    URL and observed hosted checks.
 
 ## Next action
 
-Run verification on the owned `context-mcp-ci` services (ports 57432, 61000/61001,
-60108 and 60080). The unchanged advisory gate remains blocked by the baseline
-maintenance advisory. Run the remaining test/coverage/package commands separately
-if needed and record the distinction. Use system CA roots for Python downloads
-on this host (`SSL_CERT_FILE=/etc/ssl/cert.pem`).
+Review the complete diff and commit range, push and open the pull request. Report
+the advisory blocker and observed hosted status without changing policy.

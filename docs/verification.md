@@ -59,7 +59,41 @@ artifact upload and cleanup:
 - [Pull request run 43099143905](https://github.com/thomasquintana/context-mcp/actions/runs/43099143905)
 - [Push run 43099139020](https://github.com/thomasquintana/context-mcp/actions/runs/43099139020)
 
-## Embedded HTLK upgrade
+## HTLK schema-17 upgrade
+
+HTLK `e6fa8c15d6d313f4b3fe4259dbaf39a5cc8bcd8b` uses only its `sqlite` feature in
+this application. The lockfile changes only HTLK source revisions; rusqlite,
+bundled SQLite, the SQLx pin, and generated dependency notices are unchanged.
+
+- Synthetic schema-6 and schema-13 fixtures are rejected without modification.
+  Same-version reopen keeps the run ID and accepted result, including with an
+  offline provider and no extra dispatch. All shipped graphs compile unchanged.
+- A two-binary rehearsal built the previous `context-mcp` main (`8ea4fe7`) and
+  published an upload over HTTP on its real schema-13 store. The new HTLK rejected
+  that store and its bytes were unchanged. The new binary, using a fresh store,
+  read the same evidence over stdio and processed new text with a single ingestion
+  receipt. The rehearsal used disposable PostgreSQL, MinIO and Typesense with
+  pure workflow fixtures. To repeat it, provision the test services, set the
+  test-service environment and point `CONTEXT_TEST_SCHEMA13_BINARY` at the old binary:
+
+  ```sh
+  cargo test --locked --test transports real_http_and_stdio_auth_resource_isolation_and_idempotency_run_through_htlk -- --ignored
+  ```
+
+- All 53 nonpaid tests passed with coverage against disposable backing services,
+  including Keycloak, actual sandbox metadata, both transports, CLI, and purge
+  across restart. Existing coverage budgets passed. The locked build, fmt, strict
+  Clippy/rustdoc, notice comparison, tracked-input audit, core package rebuild and
+  reproducible release also passed. Prior paid and full-format evidence below
+  applies to the revisions tested in those campaigns.
+- `tools/verify.py --coverage` stops at the dependency gate before running tests.
+  The audit flags existing `chrono` ([RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543))
+  and `humantime` ([RUSTSEC-2026-0542](https://rustsec.org/advisories/RUSTSEC-2026-0542))
+  maintenance advisories on both the old and new pins. `object_store` still depends
+  on both. No advisory exceptions were added; license, source and bans checks
+  passed, and the other verification commands were run separately.
+
+## Previous embedded HTLK upgrade (schema 13)
 
 The verified dependency graph pins HTLK `1e405c495fc2e9b3b3fb812123f509178b08a9e5`,
 SQLx `10462fa4414c6c7f1ed1d39bb31678e3b726878c` and rmcp 3.9.0. HTLK resolves
@@ -87,8 +121,8 @@ The retained-data SQLite/fingerprint cutover procedure is in
 
 ## Measured per-crate line coverage
 
-Production source files only; integration helpers, examples, dependencies and generated
-build output are excluded by the report checker. Embedded unit tests share source
+Latest schema-17 run. Production source files only; the report checker excludes
+integration helpers, examples, dependencies and generated build output. Embedded unit tests share source
 files, matching the sibling HTLK reporting convention. No production coverage-skipping
 attributes or test-only behavior are used.
 
@@ -96,11 +130,11 @@ attributes or test-only behavior are used.
 | --- | --- | --- |
 | context-core |210 /233|90.13%|
 | context-storage |916 /1001|91.51%|
-| context-workflows |728 /881|82.63%|
+| context-workflows |724 /881|82.18%|
 | context-auth |397 /421|94.30%|
-| context-engine |4370 /5110|85.52%|
+| context-engine |4379 /5110|85.69%|
 | context-process |199 /737|27.00%|
-| context-mcp |807 /1282|62.95%|
+| context-mcp |805 /1282|62.79%|
 
 The goal remains 99% meaningful production line coverage; it is **not yet reached**.
 CI enforces measured per-crate floors and uncovered-line budgets in

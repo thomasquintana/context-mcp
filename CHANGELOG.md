@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Pin HTLK `e6fa8c15` with its SQLite execution backend. Existing schema-13
+  execution databases require a fresh schema-17 path after old work is settled;
+  retain old history with its matching binary. Operator graph and application
+  storage contracts are unchanged.
 - Pin the embedded HTLK compiler/runtime to revision `1e405c49`, using its public
   result-policy and immutable compilation-artifact interfaces. Existing HTLK SQLite
   execution databases require an explicit deployment cutover; they are not reset

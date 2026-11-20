@@ -260,7 +260,7 @@ graph fixture.{role} {{
         let address=socket.local_addr().unwrap();drop(socket);
         let public=format!("http://{address}/mcp");
         let config_path=dir.path().join("server.json");
-        write(&config_path,&json!({
+        let mut server_config=json!({
             "bind":address.to_string(),"public_url":public,"allowed_hosts":["127.0.0.1","localhost"],"allowed_origins":[],
             "stdio_token_env":"CONTEXT_STDIO_TOKEN","max_request_bytes":1048576,
             "application":{"database_url_env":"CONTEXT_TEST_DATABASE_URL","database_connections":5,"oidc":null,
@@ -271,9 +271,14 @@ graph fixture.{role} {{
                     "spaces":{"test":{"collection":index,"dimensions":3,"document_role":"embed","query_role":"embed"}},"default_space":"test",
                     "profiles":{"default":{"media_types":["text/plain"],"extract_role":"extract","enrich_role":"enrich","space":"test","chunk_bytes":128}},"default_profile":"default",
                     "staging_directory":"staging","max_upload_bytes":1048576,"upload_lifetime_seconds":60,"max_pending_jobs":1024,"workers":2,"max_segments":100}}
-        }));
+        });
+        write(&config_path,&server_config);
         let binary=env!("CARGO_BIN_EXE_context-mcp");
-        let mut process=Process(Command::new(binary).args(["serve","--config"]).arg(&config_path)
+        // Optional two-binary rehearsal using an executable built from the old
+        // main. The ordinary CI run also exercises a fresh execution-store path.
+        let legacy=std::env::var_os("CONTEXT_TEST_SCHEMA13_BINARY");
+        let first_server=legacy.as_deref().unwrap_or_else(|| std::ffi::OsStr::new(binary));
+        let mut process=Process(Command::new(first_server).args(["serve","--config"]).arg(&config_path)
             .args(["--transport","http"]).env("CONTEXT_TEST_DATABASE_URL",&database_url)
             .env("RUST_LOG","warn").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::inherit()).spawn().unwrap());
         let http=reqwest::Client::builder().timeout(Duration::from_secs(1)).build().unwrap();
@@ -377,6 +382,15 @@ graph fixture.{role} {{
         read_host.shutdown().await.unwrap();
         process.terminate().await;
 
+        let old_store=dir.path().join("server.sqlite");
+        let retained_store=std::fs::read(&old_store).unwrap();
+        if legacy.is_some() {
+            use htlk::runtime::store::{SqliteStore,StoreConfig,StoreError};
+            assert!(matches!(SqliteStore::open(&old_store,StoreConfig::default()).await,Err(StoreError::Schema)));
+        }
+        server_config["application"]["workflows"]["database"]=json!("replacement.sqlite");
+        write(&config_path,&server_config);
+
         let mut stdio_config=client_config(dir.path(),"client-stdio",json!({"transport":"stdio","program":binary,
             "arguments":["serve","--config",config_path,"--transport","stdio"],
             "environment":{"CONTEXT_TEST_DATABASE_URL":database_url,"CONTEXT_STDIO_TOKEN":full.secret(),"RUST_LOG":"warn"}}),"stdio");
@@ -445,9 +459,13 @@ graph acceptance.stdio_roundtrip {
         let host=WorkflowHost::open(&stdio_config,dir.path(),&[]).await.unwrap();
         let mut stdio_grant=grant.clone();stdio_grant.roles.insert("roundtrip".into());host.grant_job(stdio_grant).unwrap();
         assert_eq!(succeeded(call(&host,grant.job,"identity",json!({})).await)["principal"],principal.to_string());
+        let retained=succeeded(call(&host,grant.job,"expand",json!({"pointer":{"kind":"content","content":context["evidence"][0]["id"]}})).await);
+        assert_eq!(retained,expanded,"the new execution store must not alter published evidence");
         let roundtrip=succeeded(call(&host,grant.job,"roundtrip",json!({"collection":initial.collection,"workspace":initial.workspace,"name":"stdio.txt","text":"transport fixture","idempotency_key":"text-stdio"})).await);
         assert_eq!(roundtrip["admitted"],roundtrip["duplicate"]);assert_eq!(roundtrip["context"]["evidence"].as_array().unwrap().len(),1,"duplicate text is selected once across transports");
         host.shutdown().await.unwrap();
+        assert!(dir.path().join("replacement.sqlite").is_file());
+        assert_eq!(std::fs::read(old_store).unwrap(),retained_store,"cutover altered the old execution store");
         auth.revoke_service(principal,full.id).await.unwrap();
         let keys:Vec<String>=sqlx::query_scalar("SELECT o.object_key FROM context.objects o JOIN context.content c ON c.id=o.content WHERE c.workspace=$1")
             .bind(Uuid::from(initial.workspace)).fetch_all(db.pool()).await.unwrap();

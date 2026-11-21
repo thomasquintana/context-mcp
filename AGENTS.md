@@ -30,6 +30,11 @@ after every compaction, before choosing work, after every task, and for general
 guidance. Update it with actual results and follow-ups and commit each verified
 task. Finish with all intended changes committed and a new pull request.
 
+During `feat/htlk-schema-20`, consult `.opencode/.tmp/plans/htlk-schema-20.md`
+after every compaction, before choosing work, after every task, and for general
+guidance. Update the plan with actual evidence after each task and commit each
+verified task. Finish with all intended changes committed and a new pull request.
+
 - One Rust application instance. PostgreSQL, Typesense, and S3-compatible storage.
 - Every MCP operation is dispatched through unchanged public HTLK interfaces.
 - All MCP providers are replaceable through operator-managed graphs, catalogs,

@@ -11,6 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Pinned toolchain and verification tools
+        id: tools
         run: |
           rustup toolchain install 1.98.0 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview
           cargo install cargo-llvm-cov --version 0.9.1 --locked
@@ -22,11 +23,14 @@ jobs:
       - name: Actual PostgreSQL, MinIO, Typesense, Keycloak and unchanged sandbox
         run: python3 tools/test_services.py
       - name: Strict checks and per-crate coverage budgets
-        run: python3 tools/verify.py --coverage
+        run: python3 tools/verify.py --coverage --advisories-separate
       - name: Verify locked dependency notices
         run: python3 tools/notices.py --check
       - name: Reproducible release build
         run: python3 tools/release.py
+      - name: Locked dependency advisories
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: cargo deny --locked --log-level error check advisories
       - name: Retain measured coverage and release artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

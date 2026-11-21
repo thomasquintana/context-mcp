@@ -97,9 +97,14 @@ migration ledger reopened without changing entries, checksums or installation ti
   ([RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543)) and `humantime`
   ([RUSTSEC-2026-0542](https://rustsec.org/advisories/RUSTSEC-2026-0542)). Both findings
   also occur on unchanged `c88acad` and remain through `object_store` `0.14.2`;
-  `rmcp` and `schemars` also bring in `chrono`. No advisory exceptions were added.
-  The remaining verifier commands ran separately. The paid and full-format results
-  below remain evidence for the revisions used in those campaigns.
+  `rmcp` and `schemars` also bring in `chrono`. Hosted CI runs the locked advisory
+  scan as a separate blocking step, so the findings do not prevent the coverage
+  and release steps from running. The default local verifier still checks all gates.
+  No advisory exceptions were added. Follow upstream work in [object_store #909](https://github.com/apache/arrow-rs-object-store/issues/909),
+  [object_store #908](https://github.com/apache/arrow-rs-object-store/pull/908), and
+  [the Rust MCP SDK #1469](https://github.com/modelcontextprotocol/rust-sdk/issues/1469).
+  The paid and full-format results below remain evidence for the revisions used in
+  those campaigns.
 
 ## Previous HTLK upgrade (schema 17)
 

@@ -17,7 +17,7 @@ serde_json = "=1.0.154"
 thiserror = "2"
 uuid = { version = "1", features = ["serde", "v7"] }
 actix = "=0.13.6"
-htlk = { version = "=0.1.0", git = "https://github.com/thomasquintana/htlk.git", rev = "873da82326f00c55f2f7e9549b7bc07dd78b0b54", default-features = false, features = ["sqlite"] }
+htlk = { version = "=0.1.0", git = "https://github.com/thomasquintana/htlk.git", rev = "e658e1840d60cc16c28d7bd3776ce1b45f8bca06", default-features = false, features = ["sqlite"] }
 # SQLx 0.9.1 allows the same libsqlite3-sys 0.40.x line as HTLK.
 sqlx = { version = "=0.9.1", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "json", "migrate", "macros"] }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "fs", "io-util", "net", "sync", "time", "signal"] }

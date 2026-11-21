@@ -1889,9 +1889,10 @@ and assume it remains compatible. Both enabled and suspended history are rejecte
 
 ### Upgrade an incompatible HTLK execution store
 
-The upgrade to HTLK `873da82` moves the execution database from SQLite schema 17
-to 20 with no automatic migration or reset. Follow
-[the full retained-data cutover](deployment.md#upgrading-the-embedded-htlk-runtime).
+The upgrade to HTLK `e658e18` moves a schema-17 deployment to SQLite schema 20
+with no automatic migration or reset. If you deployed `873da82` with schema 20,
+settle work under that binary too: the saved workflow fingerprints differ.
+Follow [the full retained-data cutover](deployment.md#upgrading-the-embedded-htlk-runtime).
 In summary:
 
 1. Preserve the old binary/image, graphs, catalogs, profiles, and configuration.

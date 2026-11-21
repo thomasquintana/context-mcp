@@ -25,11 +25,12 @@ authorized job records before launching execution. Changing executable policies 
 removing required old role revisions requires draining/migrating those jobs through
 an explicit supported deployment procedure.
 
-The HTLK `873da82` upgrade requires a fresh schema-20 execution store after old
+The HTLK `e658e18` upgrade requires a fresh schema-20 execution store after old
 work is fully settled; schema-17 and earlier stores cannot be reopened. See the
 [retained-data cutover procedure](deployment.md#upgrading-the-embedded-htlk-runtime)
-for pending uploads, cleanup and legacy retry restrictions. There is no automatic
-cross-version run migration or fingerprint substitution.
+for pending uploads, cleanup and legacy retry restrictions. The earlier `873da82`
+build also uses schema 20, but its run fingerprints are different. There is no
+automatic cross-version run migration or fingerprint substitution.
 
 Tool calls return native `McpToolResult` envelopes. Operator graphs accept those
 typed responses and explicitly project their selected `.data` into role JSON.

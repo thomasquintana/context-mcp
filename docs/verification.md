@@ -61,8 +61,11 @@ artifact upload and cleanup:
 
 ## HTLK schema-20 upgrade
 
-HTLK `873da82326f00c55f2f7e9549b7bc07dd78b0b54` uses only its `sqlite` feature
+HTLK `e658e1840d60cc16c28d7bd3776ce1b45f8bca06` uses only its `sqlite` feature
 and links bundled SQLite through rusqlite `0.43.0` and libsqlite3-sys `0.40.0`.
+The refresh from `873da82` changes only the five HTLK source revisions in the
+lockfile. Upstream's PostgreSQL inspection batching does not run in this build,
+but the native implementation identity changes while SQLite stays at schema 20.
 Published SQLx `0.9.1` permits that version in dependency resolution and retains
 the same PostgreSQL and embedded migration features. The existing PostgreSQL
 migration ledger reopened without changing entries, checksums or installation times.
@@ -71,7 +74,7 @@ migration ledger reopened without changing entries, checksums or installation ti
   byte-for-byte rejection of synthetic schema-6, -13 and -17 stores, and same-version
   durable admission/reopen. The offline envelope test preserves the result without
   an extra provider dispatch.
-- A separate two-binary rehearsal built the previous `context-mcp` main (`c88acad`)
+- The two-binary rehearsal was rerun for this pin. It built `context-mcp` at `c88acad`
   with `cargo build --locked --bin context-mcp`. It published an upload over HTTP on
   a real schema-17 execution store. The new runtime rejected that store without
   changing its bytes, read the same published evidence over stdio on a fresh store,
@@ -86,6 +89,8 @@ migration ledger reopened without changing entries, checksums or installation ti
 
 - All 53 nonpaid tests passed under coverage with unchanged budgets, including
   actual Keycloak and sandbox metadata, HTTP/stdio, CLI, and permanent purge.
+  Leave `CONTEXT_TEST_SCHEMA17_BINARY` unset for coverage verification so both
+  servers run the instrumented binary.
   The locked build, fmt, strict Clippy/rustdoc, license/source/bans, notice comparison,
   tracked-input audit, core package rebuild and deterministic source release passed.
 - The combined verifier still stops at the dependency gate on `chrono`
@@ -170,7 +175,7 @@ attributes or test-only behavior are used.
 | context-storage |916 /1001|91.51%|
 | context-workflows |724 /881|82.18%|
 | context-auth |397 /421|94.30%|
-| context-engine |4379 /5110|85.69%|
+| context-engine |4371 /5110|85.54%|
 | context-process |199 /737|27.00%|
 | context-mcp |807 /1282|62.95%|
 

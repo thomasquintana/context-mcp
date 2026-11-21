@@ -1252,7 +1252,7 @@ dependencies = [
 [[package]]
 name = "htlk"
 version = "0.1.0"
-source = "git+https://github.com/thomasquintana/htlk.git?rev=873da82326f00c55f2f7e9549b7bc07dd78b0b54#873da82326f00c55f2f7e9549b7bc07dd78b0b54"
+source = "git+https://github.com/thomasquintana/htlk.git?rev=e658e1840d60cc16c28d7bd3776ce1b45f8bca06#e658e1840d60cc16c28d7bd3776ce1b45f8bca06"
 dependencies = [
  "htlk-compiler",
  "htlk-runtime",
@@ -1261,7 +1261,7 @@ dependencies = [
 [[package]]
 name = "htlk-analyzer"
 version = "0.1.0"
-source = "git+https://github.com/thomasquintana/htlk.git?rev=873da82326f00c55f2f7e9549b7bc07dd78b0b54#873da82326f00c55f2f7e9549b7bc07dd78b0b54"
+source = "git+https://github.com/thomasquintana/htlk.git?rev=e658e1840d60cc16c28d7bd3776ce1b45f8bca06#e658e1840d60cc16c28d7bd3776ce1b45f8bca06"
 dependencies = [
  "htlk-executable",
  "iri-string",
@@ -1277,7 +1277,7 @@ dependencies = [
 [[package]]
 name = "htlk-compiler"
 version = "0.1.0"
-source = "git+https://github.com/thomasquintana/htlk.git?rev=873da82326f00c55f2f7e9549b7bc07dd78b0b54#873da82326f00c55f2f7e9549b7bc07dd78b0b54"
+source = "git+https://github.com/thomasquintana/htlk.git?rev=e658e1840d60cc16c28d7bd3776ce1b45f8bca06#e658e1840d60cc16c28d7bd3776ce1b45f8bca06"
 dependencies = [
  "htlk-analyzer",
  "htlk-executable",
@@ -1286,7 +1286,7 @@ dependencies = [
 [[package]]
 name = "htlk-executable"
 version = "0.1.0"
-source = "git+https://github.com/thomasquintana/htlk.git?rev=873da82326f00c55f2f7e9549b7bc07dd78b0b54#873da82326f00c55f2f7e9549b7bc07dd78b0b54"
+source = "git+https://github.com/thomasquintana/htlk.git?rev=e658e1840d60cc16c28d7bd3776ce1b45f8bca06#e658e1840d60cc16c28d7bd3776ce1b45f8bca06"
 dependencies = [
  "cbor2",
  "half",
@@ -1299,7 +1299,7 @@ dependencies = [
 [[package]]
 name = "htlk-runtime"
 version = "0.1.0"
-source = "git+https://github.com/thomasquintana/htlk.git?rev=873da82326f00c55f2f7e9549b7bc07dd78b0b54#873da82326f00c55f2f7e9549b7bc07dd78b0b54"
+source = "git+https://github.com/thomasquintana/htlk.git?rev=e658e1840d60cc16c28d7bd3776ce1b45f8bca06#e658e1840d60cc16c28d7bd3776ce1b45f8bca06"
 dependencies = [
  "actix",
  "base64 0.23.1",

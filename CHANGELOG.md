@@ -2,9 +2,11 @@
 
 ## Unreleased
 
-- Pin SQLite-only HTLK `873da82` and published SQLx `0.9.1`. After settling old
+- Pin SQLite-only HTLK `e658e18` and published SQLx `0.9.1`. After settling old
   work, use a fresh schema-20 execution path and retain the schema-17 history with
   its matching binary. Existing operator graphs and application storage are unchanged.
+  The earlier `873da82` build also uses schema 20, but its executable fingerprints
+  differ; settle work under that binary before switching, too.
 - Pin HTLK `e6fa8c15` with its SQLite execution backend. Existing schema-13
   execution databases require a fresh schema-17 path after old work is settled;
   retain old history with its matching binary. Operator graph and application

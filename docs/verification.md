@@ -59,7 +59,44 @@ artifact upload and cleanup:
 - [Pull request run 43099143905](https://github.com/thomasquintana/context-mcp/actions/runs/43099143905)
 - [Push run 43099139020](https://github.com/thomasquintana/context-mcp/actions/runs/43099139020)
 
-## HTLK schema-17 upgrade
+## HTLK schema-20 upgrade
+
+HTLK `873da82326f00c55f2f7e9549b7bc07dd78b0b54` uses only its `sqlite` feature
+and links bundled SQLite through rusqlite `0.43.0` and libsqlite3-sys `0.40.0`.
+Published SQLx `0.9.1` permits that version in dependency resolution and retains
+the same PostgreSQL and embedded migration features. The existing PostgreSQL
+migration ledger reopened without changing entries, checksums or installation times.
+
+- All shipped graphs compile unchanged. Public runtime tests confirm schema 20,
+  byte-for-byte rejection of synthetic schema-6, -13 and -17 stores, and same-version
+  durable admission/reopen. The offline envelope test preserves the result without
+  an extra provider dispatch.
+- A separate two-binary rehearsal built the previous `context-mcp` main (`c88acad`)
+  with `cargo build --locked --bin context-mcp`. It published an upload over HTTP on
+  a real schema-17 execution store. The new runtime rejected that store without
+  changing its bytes, read the same published evidence over stdio on a fresh store,
+  and processed new text with one ingestion receipt. The rehearsal used disposable
+  PostgreSQL, MinIO and Typesense with pure workflow fixtures. To repeat it, provision
+  the test services, set the test-service environment and point
+  `CONTEXT_TEST_SCHEMA17_BINARY` at the schema-17 executable:
+
+  ```sh
+  cargo test --locked --test transports real_http_and_stdio_auth_resource_isolation_and_idempotency_run_through_htlk -- --ignored
+  ```
+
+- All 53 nonpaid tests passed under coverage with unchanged budgets, including
+  actual Keycloak and sandbox metadata, HTTP/stdio, CLI, and permanent purge.
+  The locked build, fmt, strict Clippy/rustdoc, license/source/bans, notice comparison,
+  tracked-input audit, core package rebuild and deterministic source release passed.
+- The combined verifier still stops at the dependency gate on `chrono`
+  ([RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543)) and `humantime`
+  ([RUSTSEC-2026-0542](https://rustsec.org/advisories/RUSTSEC-2026-0542)). Both findings
+  also occur on unchanged `c88acad` and remain through `object_store` `0.14.2`;
+  `rmcp` and `schemars` also bring in `chrono`. No advisory exceptions were added.
+  The remaining verifier commands ran separately. The paid and full-format results
+  below remain evidence for the revisions used in those campaigns.
+
+## Previous HTLK upgrade (schema 17)
 
 HTLK `e6fa8c15d6d313f4b3fe4259dbaf39a5cc8bcd8b` uses only its `sqlite` feature in
 this application. The lockfile changes only HTLK source revisions; rusqlite,
@@ -73,8 +110,9 @@ bundled SQLite, the SQLx pin, and generated dependency notices are unchanged.
   that store and its bytes were unchanged. The new binary, using a fresh store,
   read the same evidence over stdio and processed new text with a single ingestion
   receipt. The rehearsal used disposable PostgreSQL, MinIO and Typesense with
-  pure workflow fixtures. To repeat it, provision the test services, set the
-  test-service environment and point `CONTEXT_TEST_SCHEMA13_BINARY` at the old binary:
+  pure workflow fixtures. To repeat that historical rehearsal from `c88acad`,
+  provision the test services, set the test-service environment and point
+  `CONTEXT_TEST_SCHEMA13_BINARY` at the schema-13 executable:
 
   ```sh
   cargo test --locked --test transports real_http_and_stdio_auth_resource_isolation_and_idempotency_run_through_htlk -- --ignored
@@ -99,9 +137,9 @@ The verified dependency graph pins HTLK `1e405c495fc2e9b3b3fb812123f509178b08a9e
 SQLx `10462fa4414c6c7f1ed1d39bb31678e3b726878c` and rmcp 3.9.0. HTLK resolves
 rusqlite 0.41.1/libsqlite3-sys 0.39.1 with patched bundled SQLite. SQLx remains the
 standard facade with its existing PostgreSQL/macros/migration features; its merged
-[upstream fix](https://github.com/launchbadge/sqlx/pull/4502) allows libsqlite3-sys 0.39.x in
-dependency resolution. Use this exact Git revision until a suitable registry release
-is verified. No advisory exception is configured.
+[upstream fix](https://github.com/launchbadge/sqlx/pull/4502) allowed libsqlite3-sys 0.39.x in
+dependency resolution before a suitable registry release was available. No advisory
+exception was configured.
 
 New regression cases compile every shipped graph, reject a synthetic schema-6 store
 without changing its bytes, and check uniform tool envelopes through the native host.
@@ -121,7 +159,7 @@ The retained-data SQLite/fingerprint cutover procedure is in
 
 ## Measured per-crate line coverage
 
-Latest schema-17 run. Production source files only; the report checker excludes
+Latest schema-20 run. Production source files only; the report checker excludes
 integration helpers, examples, dependencies and generated build output. Embedded unit tests share source
 files, matching the sibling HTLK reporting convention. No production coverage-skipping
 attributes or test-only behavior are used.
@@ -134,7 +172,7 @@ attributes or test-only behavior are used.
 | context-auth |397 /421|94.30%|
 | context-engine |4379 /5110|85.69%|
 | context-process |199 /737|27.00%|
-| context-mcp |805 /1282|62.79%|
+| context-mcp |807 /1282|62.95%|
 
 The goal remains 99% meaningful production line coverage; it is **not yet reached**.
 CI enforces measured per-crate floors and uncovered-line budgets in

@@ -39,11 +39,15 @@ each verified task. Review the complete diff, push the branch, and open a new PR
    store rejection and byte comparison, same evidence over new stdio, and new
    ingestion with one receipt. Used separate execution stores, disposable actual
    PostgreSQL/MinIO/Typesense, and pure role fixtures.
-4. **Release verification — pending.** Run the strict verify/coverage, dependency,
-   notice, tracked-input, package and deterministic release gates. If the combined
-   verifier stops on baseline `chrono`/`humantime` maintenance advisories, compare
-   with the unchanged baseline and run remaining checks separately. Record actual
-   evidence and clean up only campaign-owned services and the detached worktree.
+4. **Release verification — complete with baseline advisory failures.** The combined
+   verifier passed fmt and strict Clippy, then stopped on RUSTSEC-2026-0543 (`chrono`)
+   and RUSTSEC-2026-0542 (`humantime`), both reproduced on unchanged `c88acad`.
+   License/source/bans, notice comparison, tracked-input audit, strict rustdoc,
+   coverage-checker unit test, core package and locked release with deterministic
+   archive passed. All 53 nonpaid tests passed when run under coverage directly,
+   including the PostgreSQL migration ledger, Keycloak, sandbox metadata, transports,
+   and purge; measured per-crate budgets passed unchanged. Updated the permanent
+   evidence and removed only the campaign-owned services/volumes and worktree.
 5. **Delivery — pending.** Review every commit and the cumulative diff against
    fresh `origin/main`. Commit all intended changes, push, create a new PR against
    `main`, and record the PR and observed check status here.

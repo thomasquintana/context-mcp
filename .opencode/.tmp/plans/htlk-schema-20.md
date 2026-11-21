@@ -25,10 +25,12 @@ each verified task. Review the complete diff, push the branch, and open a new PR
 1. **Branch and plan — complete.** Confirmed PR #3 was merged, fetched `main`,
    branched from `c88acad`, verified upstream `main`, and reviewed the permanent
    compatibility and release contracts. Added branch-specific alignment guidance.
-2. **Dependencies and compatibility — pending.** Pin SQLite-only HTLK to the target,
-   align its shared dependency constraints, and use published SQLx `0.9.1` to
-   permit `libsqlite3-sys` 0.40.x. Update the lockfile and notices, confirm backend
-   features, and run locked build/check and regular tests (including shipped graphs).
+2. **Dependencies and compatibility — complete.** Pinned SQLite-only HTLK and
+   aligned Actix, Tokio, serde_json and URL. Published SQLx `0.9.1` permits
+   `libsqlite3-sys` `0.40.0`; the build links it through HTLK's `rusqlite` `0.43.0`
+   only. Removed the unused SQLx Git allowance. Locked build, all-target check,
+   26 regular tests (including all shipped graphs), notices and license/source/bans
+   checks passed. Neither host interfaces nor graph sources needed changes.
 3. **Retained-state cutover — pending.** Update deployment/host/user docs and the
    changelog. Reject schema 17 unchanged, verify schema 20 and durable reopen, and
    rehearse with real schema-17 and schema-20 binaries using separate execution

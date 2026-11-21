@@ -19,7 +19,7 @@ claim needs observed evidence; fixture coverage cannot establish provider behavi
 | A12 | Revisioned memory, concurrent reconciliation and cited synthesis | Actual application history/equivalence/complement/conflict/version/authority/citation/save tests plus real model contradiction preservation and saved cited synthesis |
 | A13 | Revocation and app-managed purge across storage, history and temporary files | Actual cross-owner physical purge/restart, S3/index/staging cleanup, source revocation, paused late PUT fences, versioned-bucket refusal and live both-transport purge |
 | A14 | Provider replacement through graphs/catalogs/bindings | Generic fixed-contract host and operator-only provider schemas; alternate pure role configurations and both required actual providers run without domain edits. Future providers require their own semantic verification, not a blanket compatibility claim |
-| A15 | CI, dependency/license policy, coverage and reproducible releases | Schema-20 campaign: 53 nonpaid Rust tests, unchanged coverage gates, strict checks, license/source/bans, notices, package and deterministic source release pass locally. Existing `chrono` and `humantime` advisories block the full gate on both pins; see verification.md for current evidence and prior hosted runs |
+| A15 | CI, dependency/license policy, coverage and reproducible releases | Schema-20 campaign: 53 nonpaid Rust tests with unchanged coverage gates. The advisory gate has two approved temporary maintenance exceptions; see verification.md for review and removal criteria |
 
 Initial domain tests cover independent authorization decisions, invalid state
 transitions, publication fencing and transitive derivation/citation semantics.

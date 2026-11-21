@@ -93,16 +93,14 @@ migration ledger reopened without changing entries, checksums or installation ti
   servers run the instrumented binary.
   The locked build, fmt, strict Clippy/rustdoc, license/source/bans, notice comparison,
   tracked-input audit, core package rebuild and deterministic source release passed.
-- The combined verifier still stops at the dependency gate on `chrono`
+- The original hosted run stopped at the dependency gate on `chrono`
   ([RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543)) and `humantime`
   ([RUSTSEC-2026-0542](https://rustsec.org/advisories/RUSTSEC-2026-0542)). Both findings
   also occur on unchanged `c88acad` and remain through `object_store` `0.14.2`;
   `rmcp` and `schemars` also bring in `chrono`. Hosted CI runs the locked advisory
   scan as a separate blocking step, so the findings do not prevent the coverage
-  and release steps from running. The default local verifier still checks all gates.
-  No advisory exceptions were added. Follow upstream work in [object_store #909](https://github.com/apache/arrow-rs-object-store/issues/909),
-  [object_store #908](https://github.com/apache/arrow-rs-object-store/pull/908), and
-  [the Rust MCP SDK #1469](https://github.com/modelcontextprotocol/rust-sdk/issues/1469).
+  and release steps from running. The default local verifier still checks all gates,
+  using the same two approved temporary exceptions as CI (see below).
   The paid and full-format results below remain evidence for the revisions used in
   those campaigns.
 
@@ -182,7 +180,7 @@ attributes or test-only behavior are used.
 | context-auth |397 /421|94.30%|
 | context-engine |4371 /5110|85.54%|
 | context-process |199 /737|27.00%|
-| context-mcp |807 /1282|62.95%|
+| context-mcp |805 /1282|62.79%|
 
 The goal remains 99% meaningful production line coverage; it is **not yet reached**.
 CI enforces measured per-crate floors and uncovered-line budgets in
@@ -245,9 +243,22 @@ The initial model429 and mini-model incorrect-color result remain in integration
 ## Dependency, license and release gates
 
 `deny.toml` rejects unknown registries/Git sources, wildcard dependency requirements,
-unapproved licenses, yanked/advisory issues. HTLK and SQLx are explicitly permitted,
-exact upstream Git revisions. Duplicate transitive versions are visible warnings
-rather than hidden updates. Rust dependency notices are generated and checked with:
+unapproved licenses, yanked dependencies and advisory findings outside the two
+exceptions below. HTLK is pinned to an allowed upstream Git source; SQLx uses its
+published registry release. Duplicate transitive versions are warnings.
+
+Review the temporary maintenance exceptions by **2026-12-21**:
+
+| Advisory | Why it is temporarily allowed | Removal condition |
+| --- | --- | --- |
+| RUSTSEC-2026-0542 (`humantime`) | `object_store` still requires it; follow [object_store #908](https://github.com/apache/arrow-rs-object-store/pull/908). | The locked graph no longer includes `humantime`. |
+| RUSTSEC-2026-0543 (`chrono`) | `object_store` and `rmcp` still require it; follow [object_store #909](https://github.com/apache/arrow-rs-object-store/issues/909) and [Rust MCP SDK #1474](https://github.com/modelcontextprotocol/rust-sdk/pull/1474). | The locked graph no longer includes `chrono`, including via `schemars`. |
+
+When upgrading, check both reverse dependency trees (`cargo tree --locked --workspace
+--all-features -i <crate>`) and rerun the locked advisory scan after removing any
+obsolete exception. The review date is a reminder, not an automatic expiration.
+
+Rust dependency notices are generated and checked with:
 
 ```sh
 python3 tools/notices.py

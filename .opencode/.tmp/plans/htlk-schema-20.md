@@ -48,6 +48,9 @@ each verified task. Review the complete diff, push the branch, and open a new PR
    including the PostgreSQL migration ledger, Keycloak, sandbox metadata, transports,
    and purge; measured per-crate budgets passed unchanged. Updated the permanent
    evidence and removed only the campaign-owned services/volumes and worktree.
-5. **Delivery — pending.** Review every commit and the cumulative diff against
-   fresh `origin/main`. Commit all intended changes, push, create a new PR against
-   `main`, and record the PR and observed check status here.
+5. **Delivery — complete.** Reviewed every delivery commit and the cumulative diff
+   against fresh `origin/main`; the tracked-input audit and diff checks passed.
+   Pushed `feat/htlk-schema-20` and opened
+   [PR #4](https://github.com/thomasquintana/context-mcp/pull/4) against `main`.
+   Hosted quality checks were queued at the first check; no hosted pass is claimed.
+   The PR documents both independently reproduced baseline advisories.

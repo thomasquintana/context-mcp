@@ -31,11 +31,14 @@ each verified task. Review the complete diff, push the branch, and open a new PR
    only. Removed the unused SQLx Git allowance. Locked build, all-target check,
    26 regular tests (including all shipped graphs), notices and license/source/bans
    checks passed. Neither host interfaces nor graph sources needed changes.
-3. **Retained-state cutover — pending.** Update deployment/host/user docs and the
-   changelog. Reject schema 17 unchanged, verify schema 20 and durable reopen, and
-   rehearse with real schema-17 and schema-20 binaries using separate execution
-   stores and shared disposable PostgreSQL, MinIO and Typesense. Check retained
-   published evidence and new work, including the single-ingestion receipt.
+3. **Retained-state cutover — complete.** Documented the operator cutover. Public
+   runtime tests passed: schemas 6, 13 and 17 are rejected byte-for-byte unchanged,
+   schema 20 is confirmed through a read-only SQLite pragma, and current admission
+   reopens with the same run ID, fingerprint and result. The two-binary transport
+   rehearsal passed with a locked `c88acad` baseline: old HTTP publication, old
+   store rejection and byte comparison, same evidence over new stdio, and new
+   ingestion with one receipt. Used separate execution stores, disposable actual
+   PostgreSQL/MinIO/Typesense, and pure role fixtures.
 4. **Release verification — pending.** Run the strict verify/coverage, dependency,
    notice, tracked-input, package and deterministic release gates. If the combined
    verifier stops on baseline `chrono`/`humantime` maintenance advisories, compare

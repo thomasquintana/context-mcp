@@ -64,6 +64,20 @@ fn real_compiler_runtime_artifact_read_and_durable_admission_are_consistent() {
         assert_eq!(reopened.fingerprint, first.fingerprint);
         assert_eq!(reopened.outputs, first.outputs);
     });
+    let path = dir.path().join("runtime.sqlite");
+    let version = std::process::Command::new("python3")
+        .arg("-c")
+        .arg(
+            "import pathlib,sqlite3,sys; \
+             uri=pathlib.Path(sys.argv[1]).as_uri()+'?mode=ro'; \
+             db=sqlite3.connect(uri,uri=True); \
+             print(db.execute('PRAGMA user_version').fetchone()[0]); db.close()",
+        )
+        .arg(path)
+        .output()
+        .unwrap();
+    assert!(version.status.success());
+    assert_eq!(version.stdout, b"20\n");
 }
 
 #[test]
@@ -96,7 +110,7 @@ fn unknown_operator_configuration_is_rejected() {
 
 #[test]
 fn incompatible_execution_store_is_rejected_without_rewriting_history() {
-    for version in ["6", "13"] {
+    for version in ["6", "13", "17"] {
         let (dir, config) = fixture();
         let path = dir.path().join("runtime.sqlite");
         // Independent SQLite writer; no dependency on HTLK's private tables.

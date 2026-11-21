@@ -274,9 +274,9 @@ graph fixture.{role} {{
         });
         write(&config_path,&server_config);
         let binary=env!("CARGO_BIN_EXE_context-mcp");
-        // Optional two-binary rehearsal using an executable built from the old
-        // main. The ordinary CI run also exercises a fresh execution-store path.
-        let legacy=std::env::var_os("CONTEXT_TEST_SCHEMA13_BINARY");
+        // Optional two-binary rehearsal using the schema-17 baseline executable.
+        // The ordinary CI run also exercises a fresh execution-store path.
+        let legacy=std::env::var_os("CONTEXT_TEST_SCHEMA17_BINARY");
         let first_server=legacy.as_deref().unwrap_or_else(|| std::ffi::OsStr::new(binary));
         let mut process=Process(Command::new(first_server).args(["serve","--config"]).arg(&config_path)
             .args(["--transport","http"]).env("CONTEXT_TEST_DATABASE_URL",&database_url)

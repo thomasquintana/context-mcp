@@ -1889,8 +1889,8 @@ and assume it remains compatible. Both enabled and suspended history are rejecte
 
 ### Upgrade an incompatible HTLK execution store
 
-The upgrade to HTLK `e6fa8c15` moves the execution database from SQLite schema 13
-to 17 with no automatic migration or reset. Follow
+The upgrade to HTLK `873da82` moves the execution database from SQLite schema 17
+to 20 with no automatic migration or reset. Follow
 [the full retained-data cutover](deployment.md#upgrading-the-embedded-htlk-runtime).
 In summary:
 

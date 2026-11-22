@@ -3,7 +3,11 @@ all-features = true
 
 [advisories]
 yanked = "deny"
-ignore = []
+# Review by 2026-12-21. Remove each exception once its crate leaves the locked graph.
+ignore = [
+    { id = "RUSTSEC-2026-0542", reason = "Unmaintained-only finding; object_store still requires humantime. Track https://github.com/apache/arrow-rs-object-store/pull/908." },
+    { id = "RUSTSEC-2026-0543", reason = "Unmaintained-only finding; object_store and rmcp still require chrono. Track https://github.com/apache/arrow-rs-object-store/issues/909 and https://github.com/modelcontextprotocol/rust-sdk/pull/1474." },
+]
 
 [licenses]
 allow = ["Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "CDLA-Permissive-2.0", "ISC", "MIT", "MIT-0", "Unicode-3.0", "Unlicense", "Zlib"]
@@ -18,4 +22,4 @@ highlight = "all"
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = ["https://github.com/thomasquintana/htlk.git", "https://github.com/launchbadge/sqlx.git"]
+allow-git = ["https://github.com/thomasquintana/htlk.git"]

@@ -103,12 +103,18 @@ the purge policy; versioned payload storage is rejected.
 
 ## Upgrading the embedded HTLK runtime
 
-The upgrade from HTLK `1e405c49` to `e6fa8c15` changes its private SQLite schema
-from 13 to 17 and changes executable/native implementation fingerprints. The new
-runtime rejects older execution databases, including schema 6 from before the
-previous upgrade; startup never migrates, deletes or resets them. PostgreSQL
-application records, payload storage and the derived search index remain separate.
-Use a maintenance cutover for retained application data:
+The upgrade from HTLK `e6fa8c15` to `e658e18` changes its private SQLite schema
+from 17 to 20 and changes executable/native implementation fingerprints. The new
+runtime rejects schema-17 and earlier execution databases, including schemas 13
+and 6. Startup never migrates, deletes or resets them. PostgreSQL application
+records, payload storage and the derived search index remain separate.
+
+If you deployed the earlier `873da82` build, the SQLite schema is already 20,
+but executable fingerprints still change. Follow the same maintenance cutover:
+settle work under the matching old binary and retain its execution database with
+that binary. Do not resume unfinished runs just because the schema matches.
+
+### Maintenance cutover
 
 1. Keep the old binary/image, configuration, catalogs and processing profiles
    available. Stop new user/agent admission at the deployment boundary while the old
@@ -128,7 +134,7 @@ Use a maintenance cutover for retained application data:
 4. Preserve the stopped deployment's old SQLite database and any associated WAL/SHM
    files together with its exact binary/configuration. Retain this protected history
    for inspection with that matching binary; it stays outside application purge scope.
-   Select a **new, unused** `application.workflows.database` path for schema 17.
+   Select a **new, unused** `application.workflows.database` path for schema 20.
    Keep PostgreSQL, S3, Typesense and permanent zero-byte upload fences intact.
 5. Install the upgraded binary/image with the operator graphs and exact provider
    catalogs. No graph or catalog rewrite is required for this upgrade, but the

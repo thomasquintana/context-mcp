@@ -2162,7 +2162,7 @@ Used by:
 Used by:
 - actix-macros 0.2.5 — https://github.com/actix/actix-net
 - actix-rt 2.15.0 — https://github.com/actix/actix-net
-- actix 0.13.5 — https://github.com/actix/actix
+- actix 0.13.6 — https://github.com/actix/actix
 - actix_derive 0.6.2 — https://github.com/actix/actix
 
 ```text
@@ -4948,7 +4948,7 @@ Used by:
 - find-msvc-tools 0.1.15 — https://github.com/rust-lang/cc-rs
 - flate2 1.1.10 — https://github.com/rust-lang/flate2-rs
 - fnv 1.0.7 — https://github.com/servo/rust-fnv
-- form_urlencoded 1.2.2 — https://github.com/servo/rust-url
+- form_urlencoded 1.2.3 — https://github.com/servo/rust-url
 - fraction 0.17.0 — https://github.com/dnsl48/fraction.git
 - hashbrown 0.16.1 — https://github.com/rust-lang/hashbrown
 - hashbrown 0.17.1 — https://github.com/rust-lang/hashbrown
@@ -4980,9 +4980,9 @@ Used by:
 - parking_lot_core 0.9.12 — https://github.com/Amanieu/parking_lot
 - percent-encoding 2.3.2 — https://github.com/servo/rust-url/
 - pkg-config 0.3.34 — https://github.com/rust-lang/pkg-config-rs
-- regex-automata 0.4.18 — https://github.com/rust-lang/regex
-- regex-syntax 0.8.11 — https://github.com/rust-lang/regex
-- regex 1.13.1 — https://github.com/rust-lang/regex
+- regex-automata 0.4.19 — https://github.com/rust-lang/regex
+- regex-syntax 0.8.12 — https://github.com/rust-lang/regex
+- regex 1.13.2 — https://github.com/rust-lang/regex
 - rustc_version 0.4.1 — https://github.com/djc/rustc-version-rs
 - rustix 1.1.6 — https://github.com/bytecodealliance/rustix
 - rustls-native-certs 0.8.5 — https://github.com/rustls/rustls-native-certs
@@ -5002,7 +5002,7 @@ Used by:
 - unicode-bidi 0.3.18 — https://github.com/servo/unicode-bidi
 - unicode-normalization 0.1.26 — https://github.com/unicode-rs/unicode-normalization
 - unicode-properties 0.1.4 — https://github.com/unicode-rs/unicode-properties
-- url 2.5.8 — https://github.com/servo/rust-url
+- url 2.5.9 — https://github.com/servo/rust-url
 - uuid 1.29.0 — https://github.com/uuid-rs/uuid
 - version_check 0.9.5 — https://github.com/SergioBenitez/version_check
 - wasi 0.11.1+wasi-snapshot-preview1 — https://github.com/bytecodealliance/wasi
@@ -6908,19 +6908,11 @@ limitations under the License.
 ## Apache License 2.0
 
 Used by:
-- sqlx-core 0.9.0 — https://github.com/launchbadge/sqlx
-- sqlx-macros-core 0.9.0 — https://github.com/launchbadge/sqlx
-- sqlx-macros 0.9.0 — https://github.com/launchbadge/sqlx
-- sqlx-postgres 0.9.0 — https://github.com/launchbadge/sqlx
-- sqlx 0.9.0 — https://github.com/launchbadge/sqlx
-- sqlx 0.9.0 — https://github.com/launchbadge/sqlx
-- sqlx 0.9.0 — https://github.com/launchbadge/sqlx
-- sqlx 0.9.0 — https://github.com/launchbadge/sqlx
-- sqlx 0.9.0 — https://github.com/launchbadge/sqlx
-- sqlx 0.9.0 — https://github.com/launchbadge/sqlx
-- sqlx 0.9.0 — https://github.com/launchbadge/sqlx
-- sqlx 0.9.0 — https://github.com/launchbadge/sqlx
-- sqlx 0.9.0 — https://github.com/launchbadge/sqlx
+- sqlx-core 0.9.1 — https://github.com/launchbadge/sqlx
+- sqlx-macros-core 0.9.1 — https://github.com/launchbadge/sqlx
+- sqlx-macros 0.9.1 — https://github.com/launchbadge/sqlx
+- sqlx-postgres 0.9.1 — https://github.com/launchbadge/sqlx
+- sqlx 0.9.1 — https://github.com/launchbadge/sqlx
 
 ```text
 Apache License
@@ -7385,7 +7377,7 @@ Used by:
 - serde_core 1.0.229 — https://github.com/serde-rs/serde
 - serde_derive 1.0.229 — https://github.com/serde-rs/serde
 - serde_derive_internals 0.30.0 — https://github.com/serde-rs/serde
-- serde_json 1.0.151 — https://github.com/serde-rs/json
+- serde_json 1.0.154 — https://github.com/serde-rs/json
 - serde_path_to_error 0.1.20 — https://github.com/dtolnay/path-to-error
 - serde_urlencoded 0.7.1 — https://github.com/nox/serde_urlencoded
 - shlex 2.0.1 — https://github.com/comex/rust-shlex
@@ -8121,8 +8113,8 @@ THE SOFTWARE.
 ## MIT License
 
 Used by:
-- libsqlite3-sys 0.39.1 — https://github.com/rusqlite/rusqlite
-- rusqlite 0.41.1 — https://github.com/rusqlite/rusqlite
+- libsqlite3-sys 0.40.0 — https://github.com/rusqlite/rusqlite
+- rusqlite 0.43.0 — https://github.com/rusqlite/rusqlite
 
 ```text
 Copyright (c) 2014 The rusqlite developers
@@ -8929,8 +8921,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ## MIT License
 
 Used by:
-- jsonschema 0.56.0 — https://github.com/Stranger6667/jsonschema
-- referencing 0.56.0 — https://github.com/Stranger6667/jsonschema
+- jsonschema 0.62.0 — https://github.com/Stranger6667/jsonschema
+- referencing 0.62.0 — https://github.com/Stranger6667/jsonschema
 
 ```text
 MIT License
@@ -9078,8 +9070,8 @@ SOFTWARE.
 ## MIT License
 
 Used by:
-- jsonschema-regex 0.56.0 — https://github.com/Stranger6667/jsonschema
-- jsonschema-value 0.56.0 — https://github.com/Stranger6667/jsonschema
+- jsonschema-regex 0.62.0 — https://github.com/Stranger6667/jsonschema
+- jsonschema-value 0.62.0 — https://github.com/Stranger6667/jsonschema
 - tiktoken-rs 0.12.1 — https://github.com/zurawiki/tiktoken-rs
 - uuid-simd 0.8.0 — https://github.com/Nugine/simd
 - vsimd 0.8.0 — https://github.com/Nugine/simd
@@ -9111,7 +9103,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 Used by:
 - tokio-stream 0.1.19 — https://github.com/tokio-rs/tokio
 - tokio-util 0.7.20 — https://github.com/tokio-rs/tokio
-- tokio 1.53.3 — https://github.com/tokio-rs/tokio
+- tokio 1.54.1 — https://github.com/tokio-rs/tokio
 
 ```text
 MIT License
@@ -9204,6 +9196,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 - fancy-regex 0.19.2 — https://github.com/fancy-regex/fancy-regex
+- fancy-regex 0.20.2 — https://github.com/fancy-regex/fancy-regex
 
 ```text
 The MIT License
@@ -9542,7 +9535,7 @@ THE SOFTWARE.
 ## MIT License
 
 Used by:
-- cbor2 1.1.5 — https://github.com/ldclabs/cbor2
+- cbor2 1.2.0 — https://github.com/ldclabs/cbor2
 
 ```text
 The MIT License (MIT)

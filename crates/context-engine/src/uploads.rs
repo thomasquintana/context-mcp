@@ -5,7 +5,9 @@ use context_core::{
     access::{Authentication, Permission, Resource},
     ids::{AssetId, CollectionId, ContentId, JobId, RevisionId, TenantId},
 };
-use context_storage::postgres::{existing_receipt, insert_resource, receipt};
+use context_storage::postgres::{
+    existing_receipt, insert_resource, receipt, require_current_revision,
+};
 use context_workflows::host::JobGrant;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -22,6 +24,9 @@ pub struct CreateUpload {
     pub collection: CollectionId,
     /// Optional existing logical asset for an immutable replacement revision.
     pub asset: Option<AssetId>,
+    /// Optional live current revision required when replacing an existing asset.
+    #[serde(default, deserialize_with = "present_revision")]
+    pub expected_revision: Option<RevisionId>,
     /// Human-readable source filename/label, never a filesystem path.
     pub name: String,
     /// Declared source MIME type, confirmed by extraction.
@@ -34,6 +39,12 @@ pub struct CreateUpload {
     pub profile: Option<String>,
     /// Stable request key scoped to principal/operation.
     pub idempotency_key: String,
+}
+
+fn present_revision<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<RevisionId>, D::Error> {
+    RevisionId::deserialize(deserializer).map(Some)
 }
 
 pub(crate) fn digest(value: &str) -> Result<[u8; 32]> {
@@ -68,7 +79,7 @@ pub(crate) fn media_type(value: &str) -> Result<String> {
 }
 
 pub(crate) fn intent_digest(args: &CreateUpload, media: &str, hash: &[u8; 32]) -> Result<[u8; 32]> {
-    let request = serde_json::to_vec(&(
+    let intent = (
         args.collection,
         args.asset,
         &args.name,
@@ -76,7 +87,12 @@ pub(crate) fn intent_digest(args: &CreateUpload, media: &str, hash: &[u8; 32]) -
         args.size_bytes,
         hash,
         &args.profile,
-    ))
+    );
+    // Preserve the exact legacy encoding for requests without a precondition.
+    let request = match args.expected_revision {
+        Some(revision) => serde_json::to_vec(&("expected_revision", revision, intent)),
+        None => serde_json::to_vec(&intent),
+    }
     .map_err(|_| Error::Invalid)?;
     Ok(Sha256::digest(request).into())
 }
@@ -146,6 +162,7 @@ impl Application {
                 .map_err(context_storage::Error::from)?
                 .into(),
             asset: Some(asset),
+            expected_revision: None,
             name: body["name"].as_str().ok_or(Error::Contract)?.into(),
             media_type: row
                 .try_get("media_type")
@@ -248,11 +265,7 @@ impl Application {
     /// Rejects absent capabilities, invalid metadata, denied Ingest authority or stale keys.
     pub async fn create_upload(&self, actor: &Authentication, args: CreateUpload) -> Result<Value> {
         let plane = self.data_plane()?;
-        if args.name.trim().is_empty()
-            || args.name.chars().count() > 256
-            || args.size_bytes == 0
-            || args.size_bytes > plane.config.max_upload_bytes
-        {
+        if args.expected_revision.is_some() && args.asset.is_none() {
             return Err(Error::Invalid);
         }
         let hash = digest(&args.sha256)?;
@@ -271,10 +284,6 @@ impl Application {
             .await
             .map_err(context_storage::Error::from)?;
         permission.commit().await?;
-        let pipeline = plane.pipeline(&self.workflows, args.profile.as_deref(), Some(&media))?;
-        self.workflows
-            .ready(&pipeline.fingerprints.keys().cloned().collect::<Vec<_>>())
-            .await?;
         let request_hash = intent_digest(&args, &media, &hash)?;
         let _lock = plane.tenant_lock(TenantId::from(owner)).await;
         let mut permission = self
@@ -303,8 +312,15 @@ impl Application {
                 )
                 .await;
         }
+        if args.name.trim().is_empty()
+            || args.name.chars().count() > 256
+            || args.size_bytes == 0
+            || args.size_bytes > plane.config.max_upload_bytes
+        {
+            return Err(Error::Invalid);
+        }
         let scope=sqlx::query("SELECT c.owner,c.parent AS workspace FROM context.resources c WHERE c.id=$1 AND c.kind='collection' AND NOT c.purging")
-            .bind(Uuid::from(args.collection)).fetch_one(&mut **tx).await.map_err(context_storage::Error::from)?;
+            .bind(Uuid::from(args.collection)).fetch_optional(&mut **tx).await.map_err(context_storage::Error::from)?.ok_or(Error::Invalid)?;
         let workspace: Uuid = scope
             .try_get("workspace")
             .map_err(context_storage::Error::from)?;
@@ -325,6 +341,9 @@ impl Application {
                         .map_err(context_storage::Error::from)?;
                 if parent != Uuid::from(args.collection) {
                     return Err(Error::Invalid);
+                }
+                if let Some(expected) = args.expected_revision {
+                    require_current_revision(tx, asset, expected.into()).await?;
                 }
                 asset
             }
@@ -352,6 +371,10 @@ impl Application {
                 asset
             }
         };
+        let pipeline = plane.pipeline(&self.workflows, args.profile.as_deref(), Some(&media))?;
+        self.workflows
+            .ready(&pipeline.fingerprints.keys().cloned().collect::<Vec<_>>())
+            .await?;
         let generation: i64 =
             sqlx::query_scalar("SELECT generation FROM context.assets WHERE id=$1")
                 .bind(Uuid::from(asset))
@@ -380,10 +403,11 @@ impl Application {
             .await
             .map_err(context_storage::Error::from)?;
         }
-        sqlx::query("INSERT INTO context.uploads(id,principal,asset,revision,object_key,source_object_key,generation,profile,expected_size,expected_sha256,media_type,workflow,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now()+($13::bigint*interval '1 second'))")
+        sqlx::query("INSERT INTO context.uploads(id,principal,asset,revision,object_key,source_object_key,generation,profile,expected_size,expected_sha256,media_type,workflow,expires_at,expected_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now()+($13::bigint*interval '1 second'),$14)")
             .bind(upload).bind(Uuid::from(actor.principal)).bind(Uuid::from(asset)).bind(Uuid::from(revision)).bind(&upload_key).bind(&source_key)
             .bind(generation).bind(serde_json::to_value(&pipeline).map_err(|_|Error::Configuration)?).bind(args.size_bytes as i64).bind(hash.as_slice())
             .bind(media).bind(args.profile.unwrap_or_else(||plane.config.default_profile.clone())).bind(plane.config.upload_lifetime_seconds as i64)
+            .bind(args.expected_revision.map(Uuid::from))
             .execute(&mut **tx).await.map_err(context_storage::Error::from)?;
         receipt(
             tx,
@@ -567,17 +591,14 @@ impl Application {
             permission.commit().await?;
             return Ok(result);
         }
-        if let Some(expected) = expected {
-            let matches: bool =
-                sqlx::query_scalar("SELECT current_revision=$2 FROM context.assets WHERE id=$1")
-                    .bind(Uuid::from(asset))
-                    .bind(Uuid::from(expected))
-                    .fetch_one(&mut **tx)
-                    .await
-                    .map_err(context_storage::Error::from)?;
-            if !matches {
-                return Err(context_storage::Error::Conflict.into());
-            }
+        // The fallback is for the reprocess path and its legacy child reservations.
+        let expected_revision = row
+            .try_get::<Option<Uuid>, _>("expected_revision")
+            .map_err(context_storage::Error::from)?
+            .or(expected.map(Uuid::from));
+        if let Some(expected_revision) = expected_revision {
+            // Hold the pointer lock through generation advancement and job admission.
+            require_current_revision(tx, asset, expected_revision).await?;
         }
         let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.uploads u JOIN context.assets a ON a.id=u.asset JOIN context.revisions v ON v.id=u.revision JOIN context.content c ON c.id=v.content WHERE u.id=$1 AND u.principal=$2 AND u.expires_at>now() AND a.generation=u.generation AND NOT u.finalized AND NOT c.purging)")
             .bind(upload).bind(Uuid::from(actor.principal)).fetch_one(&mut **tx).await.map_err(context_storage::Error::from)?;
@@ -655,9 +676,9 @@ impl Application {
                     .ok_or(Error::Invalid)
             })
             .collect::<Result<Vec<_>>>()?;
-        sqlx::query("INSERT INTO context.jobs(id,principal,asset,revision,generation,kind,state,workflow,scope,auth_scopes,submitting_credential) VALUES($1,$2,$3,$4,$5,'ingest','accepted',$6,$3,$7,$8)")
+        sqlx::query("INSERT INTO context.jobs(id,principal,asset,revision,generation,kind,state,workflow,scope,auth_scopes,submitting_credential,expected_revision) VALUES($1,$2,$3,$4,$5,'ingest','accepted',$6,$3,$7,$8,$9)")
             .bind(Uuid::from(job)).bind(Uuid::from(actor.principal)).bind(Uuid::from(asset)).bind(revision).bind(generation)
-            .bind(serde_json::to_string(&pipeline).map_err(|_|Error::Contract)?).bind(scopes).bind(actor.credential.map(Uuid::from))
+            .bind(serde_json::to_string(&pipeline).map_err(|_|Error::Contract)?).bind(scopes).bind(actor.credential.map(Uuid::from)).bind(expected_revision)
             .execute(&mut **tx).await.map_err(context_storage::Error::from)?;
         sqlx::query("INSERT INTO context.workflow_authority(job,authority) VALUES($1,$2)")
             .bind(Uuid::from(job))

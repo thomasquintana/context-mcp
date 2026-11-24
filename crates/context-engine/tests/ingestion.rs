@@ -347,7 +347,7 @@ fn durable_admission_publication_failure_cancel_and_retry_use_real_backing_servi
         let asset=receipt["asset"].as_str().unwrap().parse().unwrap();
         let hash=Sha256::digest(b"fixture content").iter().map(|v|format!("{v:02x}")).collect::<String>();
         fixture.app.create_upload(&fixture.actor,context_engine::uploads::CreateUpload {
-            collection:fixture.collection,asset:None,name:"fixture.txt".into(),media_type:"text/plain".into(),size_bytes:15,sha256:hash.clone(),
+            collection:fixture.collection,asset:None,expected_revision:None,name:"fixture.txt".into(),media_type:"text/plain".into(),size_bytes:15,sha256:hash.clone(),
             profile:None,idempotency_key:"crossed:upload".into(),
         }).await.unwrap();
         let original_upload:Value=sqlx::query_scalar("SELECT receipt FROM context.receipts WHERE principal=$1 AND operation='create_upload' AND idempotency_key=encode(sha256(convert_to('text-1:upload','UTF8')),'hex')")
@@ -356,7 +356,7 @@ fn durable_admission_publication_failure_cancel_and_retry_use_real_backing_servi
         assert!(matches!(fixture.app.ingest_text(&fixture.actor,fixture.collection,"fixture.txt","fixture content",None,"crossed").await,
             Err(context_engine::Error::Storage(context_storage::Error::Conflict))));
         let transfer=fixture.app.create_upload(&fixture.actor,context_engine::uploads::CreateUpload {
-            collection:fixture.collection,asset:Some(asset),name:"replacement.txt".into(),media_type:"text/plain".into(),size_bytes:15,sha256:hash,
+            collection:fixture.collection,asset:Some(asset),expected_revision:Some(receipt["revision"].as_str().unwrap().parse().unwrap()),name:"replacement.txt".into(),media_type:"text/plain".into(),size_bytes:15,sha256:hash,
             profile:Some("broken".into()),idempotency_key:"replacement".into(),
         }).await.unwrap();
         let mut put=fixture.http.put(transfer["url"].as_str().unwrap()).body("fixture content");
@@ -666,7 +666,7 @@ fn actual_video_model_workflows_publish_independently_checked_evidence() {
         fixture.app=Arc::new(Application::open(&fixture.config,fixture._dir.path()).await.unwrap());fixture.app.start_workers().await.unwrap();
         let bytes=std::fs::read(std::env::var("CONTEXT_TEST_VIDEO_FIXTURE").expect("synthetic blue video with known speech")).unwrap();
         let hash=Sha256::digest(&bytes).iter().map(|b|format!("{b:02x}")).collect::<String>();
-        let transfer=fixture.app.create_upload(&fixture.actor,context_engine::uploads::CreateUpload {collection:fixture.collection,asset:None,name:"blue-with-speech.mp4".into(),media_type:"video/mp4".into(),size_bytes:bytes.len() as u64,sha256:hash,profile:None,idempotency_key:"real-video".into()}).await.unwrap();
+        let transfer=fixture.app.create_upload(&fixture.actor,context_engine::uploads::CreateUpload {collection:fixture.collection,asset:None,expected_revision:None,name:"blue-with-speech.mp4".into(),media_type:"video/mp4".into(),size_bytes:bytes.len() as u64,sha256:hash,profile:None,idempotency_key:"real-video".into()}).await.unwrap();
         let mut put=fixture.http.put(transfer["url"].as_str().unwrap()).body(bytes);for(k,v)in transfer["headers"].as_object().unwrap(){put=put.header(k,v.as_str().unwrap());}assert!(put.send().await.unwrap().status().is_success());
         let admitted=fixture.app.finalize_upload(&fixture.actor,transfer["upload"].as_str().unwrap().parse().unwrap(),"real-video-final").await.unwrap();
         let job:JobId=admitted["job"].as_str().unwrap().parse().unwrap();let mut success=false;
@@ -1375,7 +1375,7 @@ fn permanent_purge_survives_restart_erases_mixed_history_across_owners_and_fence
         assert!(fixture.app.purge(&guest,Purge{target:Target::Asset(asset),expected_generation:Some(generation),idempotency_key:"not-the-owner".into()}).await.is_err());
         fixture.app.shutdown().await.unwrap();fixture.app=Arc::new(Application::open(&fixture.config,fixture._dir.path()).await.unwrap());
         let hash=Sha256::digest(b"fixture content").iter().map(|v|format!("{v:02x}")).collect::<String>();
-        let mut metadata=context_engine::uploads::CreateUpload{collection:fixture.collection,asset:Some(asset),name:"pending-replacement.txt".into(),media_type:"text/plain".into(),size_bytes:15,sha256:hash,profile:None,idempotency_key:"pending-replacement".into()};
+        let mut metadata=context_engine::uploads::CreateUpload{collection:fixture.collection,asset:Some(asset),expected_revision:None,name:"pending-replacement.txt".into(),media_type:"text/plain".into(),size_bytes:15,sha256:hash,profile:None,idempotency_key:"pending-replacement".into()};
         let transfer=fixture.app.create_upload(&fixture.actor,metadata.clone()).await.unwrap();let mut put=fixture.http.put(transfer["url"].as_str().unwrap()).body("fixture content");for(k,v)in transfer["headers"].as_object().unwrap(){put=put.header(k,v.as_str().unwrap());}assert!(put.send().await.unwrap().status().is_success());
         fixture.app.finalize_upload(&fixture.actor,transfer["upload"].as_str().unwrap().parse().unwrap(),"pending-finalize").await.unwrap();
         metadata.idempotency_key="late-upload".into();let late=fixture.app.create_upload(&fixture.actor,metadata).await.unwrap();

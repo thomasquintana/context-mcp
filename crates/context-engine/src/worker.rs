@@ -36,6 +36,7 @@ pub(crate) struct Job {
     pub(crate) workspace: WorkspaceId,
     pub(crate) source: ContentId,
     pub(crate) generation: i64,
+    expected_revision: Option<Uuid>,
     pub(crate) media_type: String,
     size: u64,
     sha256: [u8; 32],
@@ -222,6 +223,9 @@ impl Application {
                 .into(),
             generation: row
                 .try_get("generation")
+                .map_err(context_storage::Error::from)?,
+            expected_revision: row
+                .try_get("expected_revision")
                 .map_err(context_storage::Error::from)?,
             media_type: row
                 .try_get("media_type")
@@ -784,7 +788,14 @@ impl Application {
         if foreign {
             return Err(Error::Contract);
         }
-        publish_revision(&mut tx, job.asset, job.revision, job.generation).await?;
+        publish_revision(
+            &mut tx,
+            job.asset,
+            job.revision,
+            job.generation,
+            job.expected_revision,
+        )
+        .await?;
         sqlx::query("UPDATE context.resources SET label=$2 WHERE id=$1")
             .bind(Uuid::from(job.asset))
             .bind(&job.name)

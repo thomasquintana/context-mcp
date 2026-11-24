@@ -16,8 +16,9 @@ Both MCP transports export exact descriptors for:
 
 | Tool | Required input | Result |
 | --- | --- | --- |
-| `context_create_upload` | `collection`, `name`, `media_type`, `size_bytes`, `sha256`, `idempotency_key`; optional `asset`, `profile` | Upload/asset/revision IDs, signed PUT URL, required headers and remaining lifetime |
+| `context_create_upload` | `collection`, `name`, `media_type`, `size_bytes`, `sha256`, `idempotency_key`; optional `asset`, `profile`, `expected_revision` (requires `asset`) | Upload/asset/revision IDs, signed PUT URL, required headers and remaining lifetime |
 | `context_finalize_upload` | `upload`, `idempotency_key` | Durable asset/revision/job admission receipt |
+| `context_upload_receipt` | `operation` (`create_upload` or `finalize_upload`) and the original `request`, including the key | Only operation and original upload/asset/revision IDs, plus job ID for finalize |
 | `context_ingest_text` | `collection`, `name`, `text`, `idempotency_key`; optional `profile` | Same durable admission receipt |
 | `context_job_status` | `job` | State, stage, redacted error class, chunk count and cleanup-pending flag |
 | `context_cancel_job` | `job`, `idempotency_key` | Committed cancellation with asynchronous cleanup status |
@@ -49,6 +50,132 @@ an unrelated upload cannot satisfy that recovery. Cancelling a published success
 rejected. Retry requires settled cleanup, compatible retained role fingerprints,
 available queue capacity and no active replacement for that asset. An already
 published revision cannot be retried through a previous failed job.
+
+## Publish a new version against a reviewed revision
+
+Supply `asset` and `expected_revision` to replace bytes only if the reviewed
+revision is still the live current revision of that asset. The asset must belong to
+the supplied `collection`. Omit `expected_revision` for an unguarded replacement;
+an explicit `null` is rejected. The application records the condition at reservation and
+checks it again in job admission and in the final publication transaction. A stale
+reservation conflicts without admitting a job, even if the asset generation still
+matches. If the predecessor changes after admission, the worker cannot publish the
+candidate; an explicit job retry retains the original condition. Processing failure
+leaves the previous current revision intact. Once publication succeeds, the same
+asset has a new current revision; both versions remain independently readable at
+`context://asset/{asset}/revision/{revision}` with current Read authority.
+
+These are MCP tool arguments and successful `structuredContent` bodies. In this
+example the new bytes are `hello`. The response URL is a redacted example; send the
+actual returned URL and headers for the PUT.
+
+`context_create_upload`:
+
+```json
+{
+  "collection": "10000000-0000-4000-8000-000000000001",
+  "asset": "10000000-0000-4000-8000-000000000002",
+  "expected_revision": "10000000-0000-4000-8000-000000000003",
+  "name": "note.txt",
+  "media_type": "text/plain",
+  "size_bytes": 5,
+  "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+  "idempotency_key": "wf01-note-v2:create"
+}
+```
+
+```json
+{
+  "upload": "10000000-0000-4000-8000-000000000004",
+  "asset": "10000000-0000-4000-8000-000000000002",
+  "revision": "10000000-0000-4000-8000-000000000005",
+  "url": "https://objects.example/upload?signature=REDACTED",
+  "headers": {
+    "content-length": "5",
+    "if-none-match": "*",
+    "x-amz-checksum-sha256": "LPJNul+wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ="
+  },
+  "expires_in_seconds": 899
+}
+```
+
+After the PUT, call `context_finalize_upload`. The HTTP completion route likewise
+uses the stored condition and requires no new field or header.
+
+```json
+{"upload":"10000000-0000-4000-8000-000000000004","idempotency_key":"wf01-note-v2:finalize"}
+```
+
+```json
+{"job":"10000000-0000-4000-8000-000000000006","asset":"10000000-0000-4000-8000-000000000002","revision":"10000000-0000-4000-8000-000000000005","state":"accepted"}
+```
+
+An exact committed replay recovers the original receipt even after the pointer
+moves. Adding, removing or changing `expected_revision` under the same create key
+conflicts. Create replays can return transfer details during the original session,
+or `finalized` and `job` while the finalized session remains. When no transfer
+capability can be issued, a retained, accessible reservation can return only its
+upload, asset and revision IDs.
+
+## Recover a receipt after a missing response
+
+Call `context_upload_receipt` with the original request object (including the exact
+key) under its submitting principal. The tool verifies the same request identity as
+admission, including normalized MIME and decoded checksum for create, and rechecks
+current Ingest authority on the asset. It never renews a URL, returns transfer
+headers, raw keys or bytes, admits a job, or replays the mutation.
+
+Create lookup:
+
+```json
+{
+  "operation": "create_upload",
+  "request": {
+    "collection": "10000000-0000-4000-8000-000000000001",
+    "asset": "10000000-0000-4000-8000-000000000002",
+    "expected_revision": "10000000-0000-4000-8000-000000000003",
+    "name": "note.txt",
+    "media_type": "text/plain",
+    "size_bytes": 5,
+    "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+    "idempotency_key": "wf01-note-v2:create"
+  }
+}
+```
+
+```json
+{"operation":"create_upload","upload":"10000000-0000-4000-8000-000000000004","asset":"10000000-0000-4000-8000-000000000002","revision":"10000000-0000-4000-8000-000000000005"}
+```
+
+Finalize lookup:
+
+```json
+{"operation":"finalize_upload","request":{"upload":"10000000-0000-4000-8000-000000000004","idempotency_key":"wf01-note-v2:finalize"}}
+```
+
+```json
+{"operation":"finalize_upload","upload":"10000000-0000-4000-8000-000000000004","asset":"10000000-0000-4000-8000-000000000002","revision":"10000000-0000-4000-8000-000000000005","job":"10000000-0000-4000-8000-000000000006"}
+```
+
+`unavailable` means no committed, accessible receipt was observed in the read
+snapshot. This includes an in-flight commit, lost authority or removed resources.
+**No committed receipt observed does not prove the first request never ran and does
+not authorize an automatic retry.** For an accessible receipt, a different request
+under the same key returns `conflict`. **A finalize receipt proves job admission,
+not successful processing or publication.** Use `context_job_status` for progress.
+
+### Migration and compatibility
+
+At startup PostgreSQL migration `0010` adds nullable predecessor IDs to uploads and
+jobs. Existing rows keep their prior behavior; no expectation is inferred. Migration
+`0011` adds asset/revision IDs to legacy create receipts wherever their original
+upload row still exists. It cannot reconstruct create IDs when that association was
+already removed. New create receipts retain those IDs after transfer-row retirement
+as long as the affected revision remains accessible. Finalize lookup uses the
+original upload-UUID digest, so legacy finalize receipts do not need their upload
+rows. Existing unguarded request digests and key hashing are unchanged. Stop the old
+application before upgrading and do not run an older writer or worker against new
+guarded rows. Refresh exact MCP catalog pins to use the new schema and tool.
 
 ## Operator data configuration
 

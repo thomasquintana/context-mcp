@@ -222,7 +222,9 @@ async fn stale_or_purging_work_never_replaces_the_successful_current_revision() 
     let first = revision(&db, &h).await;
     let second = revision(&db, &h).await;
     let mut tx = db.transaction().await.unwrap();
-    publish_revision(&mut tx, h.asset, first, 1).await.unwrap();
+    publish_revision(&mut tx, h.asset, first, 1, None)
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
     sqlx::query("UPDATE context.assets SET generation=2 WHERE id=$1")
         .bind(Uuid::from(h.asset))
@@ -231,7 +233,7 @@ async fn stale_or_purging_work_never_replaces_the_successful_current_revision() 
         .unwrap();
     let mut tx = db.transaction().await.unwrap();
     assert!(matches!(
-        publish_revision(&mut tx, h.asset, second, 1).await,
+        publish_revision(&mut tx, h.asset, second, 1, Some(first.into())).await,
         Err(Error::Conflict)
     ));
     tx.rollback().await.unwrap();
@@ -242,7 +244,7 @@ async fn stale_or_purging_work_never_replaces_the_successful_current_revision() 
         .unwrap();
     let mut tx = db.transaction().await.unwrap();
     assert!(matches!(
-        publish_revision(&mut tx, h.asset, second, 2).await,
+        publish_revision(&mut tx, h.asset, second, 2, Some(first.into())).await,
         Err(Error::Conflict)
     ));
     tx.rollback().await.unwrap();
@@ -276,10 +278,41 @@ async fn stale_or_purging_work_never_replaces_the_successful_current_revision() 
         .unwrap();
     let mut tx = db.transaction().await.unwrap();
     assert!(matches!(
-        publish_revision(&mut tx, h.asset, second, 2).await,
+        publish_revision(&mut tx, h.asset, second, 2, Some(first.into())).await,
         Err(Error::Conflict)
     ));
     tx.rollback().await.unwrap();
+    db.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires CONTEXT_TEST_DATABASE_URL pointing at isolated PostgreSQL"]
+async fn publication_cannot_advance_from_a_different_predecessor_at_the_same_generation() {
+    let db = database().await;
+    let h = hierarchy(&db).await;
+    let first = revision(&db, &h).await;
+    let winner = revision(&db, &h).await;
+    let stale = revision(&db, &h).await;
+    let mut tx = db.transaction().await.unwrap();
+    publish_revision(&mut tx, h.asset, first, 1, None)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let mut tx = db.transaction().await.unwrap();
+    publish_revision(&mut tx, h.asset, winner, 1, Some(first.into()))
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let mut tx = db.transaction().await.unwrap();
+    assert!(matches!(
+        publish_revision(&mut tx, h.asset, stale, 1, Some(first.into())).await,
+        Err(Error::Conflict)
+    ));
+    tx.rollback().await.unwrap();
+    let (current, generation, published): (Uuid, i64, bool) = sqlx::query_as(
+        "SELECT a.current_revision,a.generation,c.published FROM context.assets a JOIN context.content c ON c.asset=a.id WHERE a.id=$1 AND c.revision=$2",
+    ).bind(Uuid::from(h.asset)).bind(Uuid::from(stale)).fetch_one(db.pool()).await.unwrap();
+    assert_eq!((current, generation, published), (winner.into(), 1, false));
     db.close().await;
 }
 

@@ -253,21 +253,46 @@ pub async fn insert_resource(
     Ok(())
 }
 
+/// Require a live, published predecessor and lock the asset pointer until commit.
+///
+/// # Errors
+/// Returns a conflict if the expected revision is no longer current or is purging.
+pub async fn require_current_revision(
+    tx: &mut Transaction<'_, Postgres>,
+    asset: AssetId,
+    expected: Uuid,
+) -> Result<()> {
+    let current = sqlx::query_scalar::<_, Uuid>(
+        "SELECT a.id FROM context.assets a JOIN context.revisions v ON v.id=a.current_revision AND v.asset=a.id
+         JOIN context.content c ON c.id=v.content WHERE a.id=$1 AND v.id=$2 AND c.published AND NOT c.purging
+         FOR NO KEY UPDATE OF a",
+    )
+    .bind(Uuid::from(asset))
+    .bind(expected)
+    .fetch_optional(&mut **tx)
+    .await?;
+    current.map(|_| ()).ok_or(Error::Conflict)
+}
+
 /// Atomically change a current pointer only for live, matching-generation work.
 ///
 /// The caller must have completed all physical/index writes while retaining the
 /// transaction's resource lock. Marks every staged body in this revision visible.
 ///
 /// # Errors
-/// Rejects purged/replaced assets, wrong-parent revisions, or stale generations.
+/// Rejects purged/replaced assets, wrong-parent revisions, or stale generations or predecessors.
 pub async fn publish_revision(
     tx: &mut Transaction<'_, Postgres>,
     asset: AssetId,
     revision: RevisionId,
     generation: i64,
+    expected_revision: Option<Uuid>,
 ) -> Result<()> {
-    let changed = sqlx::query("UPDATE context.assets a SET current_revision=$2 WHERE a.id=$1 AND a.generation=$3 AND NOT EXISTS(WITH RECURSIVE ancestors AS (SELECT id,parent,purging FROM context.resources WHERE id=a.id UNION ALL SELECT r.id,r.parent,r.purging FROM context.resources r JOIN ancestors p ON r.id=p.parent) SELECT 1 FROM ancestors WHERE purging) AND EXISTS(SELECT 1 FROM context.revisions v JOIN context.content c ON c.id=v.content WHERE v.id=$2 AND v.asset=a.id AND NOT c.purging)")
-        .bind(Uuid::from(asset)).bind(Uuid::from(revision)).bind(generation).execute(&mut **tx).await?;
+    let changed = sqlx::query("UPDATE context.assets a SET current_revision=$2 WHERE a.id=$1 AND a.generation=$3
+        AND ($4::uuid IS NULL OR (a.current_revision=$4 AND EXISTS(SELECT 1 FROM context.revisions v JOIN context.content c ON c.id=v.content WHERE v.id=$4 AND v.asset=a.id AND c.published AND NOT c.purging)))
+        AND NOT EXISTS(WITH RECURSIVE ancestors AS (SELECT id,parent,purging FROM context.resources WHERE id=a.id UNION ALL SELECT r.id,r.parent,r.purging FROM context.resources r JOIN ancestors p ON r.id=p.parent) SELECT 1 FROM ancestors WHERE purging)
+        AND EXISTS(SELECT 1 FROM context.revisions v JOIN context.content c ON c.id=v.content WHERE v.id=$2 AND v.asset=a.id AND NOT c.purging)")
+        .bind(Uuid::from(asset)).bind(Uuid::from(revision)).bind(generation).bind(expected_revision).execute(&mut **tx).await?;
     if changed.rows_affected() != 1 {
         return Err(Error::Conflict);
     }
@@ -335,15 +360,38 @@ pub async fn existing_receipt(
         .bind(lock_key)
         .execute(&mut **tx)
         .await?;
-    let row = sqlx::query("SELECT request_digest,receipt FROM context.receipts WHERE principal=$1 AND operation=$2 AND idempotency_key=$3")
-        .bind(Uuid::from(principal)).bind(operation).bind(key).fetch_optional(&mut **tx).await?;
-    match row {
+    match read_receipt(tx, principal, operation, &key).await? {
         None => Ok(None),
-        Some(row) if row.try_get::<Vec<u8>, _>("request_digest")? == digest => {
-            Ok(Some(row.try_get("receipt")?))
-        }
+        Some((stored, value)) if stored == digest => Ok(Some(value)),
         Some(_) => Err(Error::Conflict),
     }
+}
+
+/// Observe a committed receipt without taking an admission lock or mutating state.
+/// A miss does not establish that the operation never ran or is safe to retry.
+///
+/// # Errors
+/// Rejects invalid keys and database failures.
+pub async fn observed_receipt(
+    tx: &mut Transaction<'_, Postgres>,
+    principal: PrincipalId,
+    operation: &str,
+    key: &str,
+) -> Result<Option<(Vec<u8>, Value)>> {
+    if key.is_empty() || key.len() > 256 {
+        return Err(Error::Invalid);
+    }
+    read_receipt(tx, principal, operation, &receipt_key(key)).await
+}
+
+async fn read_receipt(
+    tx: &mut Transaction<'_, Postgres>,
+    principal: PrincipalId,
+    operation: &str,
+    key_handle: &str,
+) -> Result<Option<(Vec<u8>, Value)>> {
+    Ok(sqlx::query_as("SELECT request_digest,receipt FROM context.receipts WHERE principal=$1 AND operation=$2 AND idempotency_key=$3")
+        .bind(Uuid::from(principal)).bind(operation).bind(key_handle).fetch_optional(&mut **tx).await?)
 }
 
 /// Opaque lookup handle for a caller-chosen idempotency key; never retain raw key text.

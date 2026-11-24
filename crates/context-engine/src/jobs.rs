@@ -5,7 +5,7 @@ use context_core::{
     access::{Authentication, Permission, Resource},
     ids::{AssetId, CollectionId, JobId, TenantId},
 };
-use context_storage::postgres::{existing_receipt, receipt};
+use context_storage::postgres::{existing_receipt, receipt, require_current_revision};
 use context_workflows::host::JobGrant;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -223,6 +223,12 @@ impl Application {
         if conflict {
             return Err(context_storage::Error::Conflict.into());
         }
+        let expected_revision: Option<Uuid> = row
+            .try_get("expected_revision")
+            .map_err(context_storage::Error::from)?;
+        if let Some(expected) = expected_revision {
+            require_current_revision(tx, asset, expected).await?;
+        }
         let pending: i64 =
             sqlx::query_scalar("SELECT count(*) FROM context.workflow_authority WHERE active")
                 .fetch_one(&mut **tx)
@@ -264,9 +270,9 @@ impl Application {
                     .ok_or(Error::Contract)
             })
             .collect::<Result<Vec<_>>>()?;
-        sqlx::query("INSERT INTO context.jobs(id,principal,asset,revision,generation,kind,state,workflow,scope,auth_scopes,submitting_credential) VALUES($1,$2,$3,$4,$5,'reprocess','accepted',$6,$3,$7,$8)")
+        sqlx::query("INSERT INTO context.jobs(id,principal,asset,revision,generation,kind,state,workflow,scope,auth_scopes,submitting_credential,expected_revision) VALUES($1,$2,$3,$4,$5,'reprocess','accepted',$6,$3,$7,$8,$9)")
             .bind(Uuid::from(job)).bind(Uuid::from(actor.principal)).bind(Uuid::from(asset)).bind(revision).bind(generation).bind(workflow).bind(scopes)
-            .bind(actor.credential.map(Uuid::from)).execute(&mut **tx).await.map_err(context_storage::Error::from)?;
+            .bind(actor.credential.map(Uuid::from)).bind(expected_revision).execute(&mut **tx).await.map_err(context_storage::Error::from)?;
         let grant = JobGrant {
             fenced: false,
             job,
@@ -333,6 +339,7 @@ impl Application {
         let upload_args = crate::uploads::CreateUpload {
             collection,
             asset: None,
+            expected_revision: None,
             name: name.into(),
             media_type: "text/plain".into(),
             size_bytes: text.len() as u64,

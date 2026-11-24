@@ -4,7 +4,7 @@
 use context_auth::Authenticator;
 use context_core::{
     access::{Authentication, Permission},
-    ids::{JobId, PrincipalId},
+    ids::{AssetId, CollectionId, JobId, PrincipalId, RevisionId},
 };
 use context_engine::{
     Application, Config, bootstrap,
@@ -26,6 +26,129 @@ use uuid::Uuid;
 
 fn write(path: &std::path::Path, value: &Value) {
     std::fs::write(path, serde_json::to_vec(value).unwrap()).unwrap();
+}
+
+#[test]
+#[ignore = "requires isolated PostgreSQL, MinIO and Typesense; pure processing fixtures"]
+fn conditional_upload_preserves_exact_bytes_and_fences_stale_admission_and_publication() {
+    actix::System::new().block_on(async {
+        use context_engine::Error::{Invalid, Storage};
+        use context_storage::Error::{Conflict, Unavailable};
+
+        let mut fixture = Fixture::open().await;
+        let original = fixture.app.ingest_text(&fixture.actor, fixture.collection, "first.txt", "original bytes", None, "first").await.unwrap();
+        let asset: AssetId = serde_json::from_value(original["asset"].clone()).unwrap();
+        let first: RevisionId = serde_json::from_value(original["revision"].clone()).unwrap();
+        fixture.app.start_workers().await.unwrap();
+        assert_eq!(fixture.wait(serde_json::from_value(original["job"].clone()).unwrap()).await["state"], "succeeded");
+        fixture.app.shutdown().await.unwrap();
+        fixture.app = Arc::new(Application::open(&fixture.config, fixture._dir.path()).await.unwrap());
+
+        let guarded = |bytes, key| {
+            let mut request = fixture.upload_request(bytes, key);
+            request.asset = Some(asset);
+            request.expected_revision = Some(first);
+            request
+        };
+        let winner = guarded("distinct replacement bytes", "winner");
+        let mut invalid = winner.clone();
+        invalid.asset = None;
+        assert!(matches!(fixture.app.create_upload(&fixture.actor, invalid).await, Err(Invalid)));
+        let wrong = fixture.app.create_collection(&fixture.actor, fixture.workspace, "other collection", "wrong-collection").await.unwrap();
+        let mut invalid = winner.clone();
+        invalid.collection = serde_json::from_value::<CollectionId>(wrong["collection"].clone()).unwrap();
+        let before = fixture.upload_counts().await;
+        assert!(matches!(fixture.app.create_upload(&fixture.actor, invalid).await, Err(Invalid)));
+        assert_eq!(fixture.upload_counts().await, before);
+
+        // These two reservations capture the same generation, with no worker running.
+        let winning_transfer = fixture.app.create_upload(&fixture.actor, winner.clone()).await.unwrap();
+        let competing = fixture.app.create_upload(&fixture.actor, guarded("other bytes", "competing")).await.unwrap();
+        let upload: Uuid = serde_json::from_value(winning_transfer["upload"].clone()).unwrap();
+        let rival: Uuid = serde_json::from_value(competing["upload"].clone()).unwrap();
+        fixture.put_upload(&winning_transfer, "distinct replacement bytes").await;
+        fixture.put_upload(&competing, "other bytes").await;
+        let accepted = fixture.app.finalize_upload(&fixture.actor, upload, "winner-final").await.unwrap();
+        let second: RevisionId = serde_json::from_value(accepted["revision"].clone()).unwrap();
+        assert_ne!(second, first);
+        assert_eq!(accepted["asset"], original["asset"]);
+        let counts = fixture.upload_counts().await;
+        assert!(matches!(fixture.app.finalize_upload(&fixture.actor, rival, "competing-final").await, Err(Storage(Conflict))));
+        assert_eq!(fixture.upload_counts().await, counts);
+        assert!(matches!(fixture.app.asset_revision(&fixture.actor, asset, second).await, Err(Storage(Unavailable))));
+
+        // This reservation captures the winner's new generation but still sees the old pointer.
+        let late = fixture.app.create_upload(&fixture.actor, guarded("late bytes", "late")).await.unwrap();
+        fixture.put_upload(&late, "late bytes").await;
+        let late_upload: Uuid = serde_json::from_value(late["upload"].clone()).unwrap();
+        fixture.app.start_workers().await.unwrap();
+        assert_eq!(fixture.wait(serde_json::from_value(accepted["job"].clone()).unwrap()).await["state"], "succeeded");
+        let (current, same_generation): (Uuid, bool) = sqlx::query_as("SELECT a.current_revision,a.generation=u.generation FROM context.assets a JOIN context.uploads u ON u.asset=a.id WHERE u.id=$1")
+            .bind(late_upload).fetch_one(fixture.db.pool()).await.unwrap();
+        assert_eq!((current, same_generation), (second.into(), true));
+        let counts = fixture.upload_counts().await;
+        assert!(matches!(fixture.app.finalize_upload(&fixture.actor, late_upload, "late-final").await, Err(Storage(Conflict))));
+        assert!(matches!(fixture.app.create_upload(&fixture.actor, guarded("stale bytes", "stale")).await, Err(Storage(Conflict))));
+        assert_eq!(fixture.upload_counts().await, counts);
+        for (revision, current, bytes) in [(first, false, "original bytes"), (second, true, "distinct replacement bytes")] {
+            let exact = fixture.app.asset_revision(&fixture.actor, asset, revision).await.unwrap();
+            assert_eq!(exact["asset"], original["asset"]);
+            assert_eq!(exact["revision"], json!(revision));
+            assert_eq!(exact["current"], current);
+            assert_eq!(exact["size_bytes"], bytes.len());
+            let stored = fixture.http.get(exact["url"].as_str().unwrap()).send().await.unwrap().error_for_status().unwrap().bytes().await.unwrap();
+            assert_eq!(stored.as_ref(), bytes.as_bytes());
+        }
+
+        // Both committed requests replay even though the reviewed predecessor is historical.
+        assert_eq!(fixture.app.finalize_upload(&fixture.actor, upload, "winner-final").await.unwrap(), accepted);
+        let replay = fixture.app.create_upload(&fixture.actor, winner.clone()).await.unwrap();
+        assert_eq!(replay["upload"], winning_transfer["upload"]);
+        assert_eq!(replay["revision"], accepted["revision"]);
+        for expected in [None, Some(second)] {
+            let mut changed = winner.clone();
+            changed.expected_revision = expected;
+            assert!(matches!(fixture.app.create_upload(&fixture.actor, changed.clone()).await, Err(Storage(Conflict))));
+            assert!(matches!(fixture.app.upload_receipt(&fixture.actor, UploadReceipt::CreateUpload(changed)).await, Err(Storage(Conflict))));
+        }
+        fixture.app.shutdown().await.unwrap();
+
+        // Removing an admitted upload's transfer row must not lose its receipt IDs.
+        sqlx::query("DELETE FROM context.uploads WHERE id=$1").bind(upload).execute(fixture.db.pool()).await.unwrap();
+        fixture.app = Arc::new(Application::open(&fixture.config, fixture._dir.path()).await.unwrap());
+        let stable = json!({"upload":upload,"asset":asset,"revision":second});
+        assert_eq!(fixture.app.create_upload(&fixture.actor, winner.clone()).await.unwrap(), stable);
+        let mut created = stable.clone();
+        created["operation"] = json!("create_upload");
+        assert_eq!(fixture.app.upload_receipt(&fixture.actor, UploadReceipt::CreateUpload(winner)).await.unwrap(), created);
+        assert_eq!(fixture.app.upload_receipt(&fixture.actor, UploadReceipt::FinalizeUpload(FinalizeUpload { upload, idempotency_key: "winner-final".into() })).await.unwrap(), json!({"operation":"finalize_upload","upload":upload,"asset":asset,"revision":second,"job":accepted["job"]}));
+
+        // Hold the pointer row until the worker reaches its atomic UPDATE. Change the
+        // predecessor without touching the job or generation, modeling a pointer-only change.
+        let mut superseded = fixture.upload_request("must never become current", "superseded");
+        superseded.asset = Some(asset);
+        superseded.expected_revision = Some(second);
+        let transfer = fixture.app.create_upload(&fixture.actor, superseded).await.unwrap();
+        fixture.put_upload(&transfer, "must never become current").await;
+        let admitted = fixture.app.finalize_upload(&fixture.actor, serde_json::from_value(transfer["upload"].clone()).unwrap(), "superseded-final").await.unwrap();
+        let job: JobId = serde_json::from_value(admitted["job"].clone()).unwrap();
+        let third: RevisionId = serde_json::from_value(admitted["revision"].clone()).unwrap();
+        let mut barrier = fixture.db.transaction().await.unwrap();
+        let holder: i32 = sqlx::query_scalar("SELECT pg_backend_pid() FROM context.assets WHERE id=$1 FOR NO KEY UPDATE").bind(Uuid::from(asset)).fetch_one(&mut *barrier).await.unwrap();
+        fixture.app.start_workers().await.unwrap();
+        fixture.wait_for_blocked_transaction(holder).await;
+        let stage: String = sqlx::query_scalar("SELECT stage FROM context.jobs WHERE id=$1").bind(Uuid::from(job)).fetch_one(fixture.db.pool()).await.unwrap();
+        assert_eq!(stage, "indexed");
+        sqlx::query("UPDATE context.assets SET current_revision=$2 WHERE id=$1").bind(Uuid::from(asset)).bind(Uuid::from(first)).execute(&mut *barrier).await.unwrap();
+        barrier.commit().await.unwrap();
+        assert_eq!(fixture.wait(job).await["state"], "failed");
+        assert_eq!(fixture.app.asset_revision(&fixture.actor, asset, first).await.unwrap()["current"], true);
+        assert!(matches!(fixture.app.asset_revision(&fixture.actor, asset, third).await, Err(Storage(Unavailable))));
+        let counts = fixture.upload_counts().await;
+        assert!(matches!(fixture.app.retry_job(&fixture.actor, job, "retry-stale").await, Err(Storage(Conflict))));
+        assert_eq!(fixture.upload_counts().await, counts);
+        fixture.close().await;
+    });
 }
 
 fn operation_error(error: context_engine::Error) -> ! {
@@ -67,7 +190,7 @@ fn operation_error(error: context_engine::Error) -> ! {
 struct Fixture {
     app: Arc<Application>,
     actor: Authentication,
-    collection: context_core::ids::CollectionId,
+    collection: CollectionId,
     tenant: context_core::ids::TenantId,
     workspace: context_core::ids::WorkspaceId,
     db: Database,

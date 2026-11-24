@@ -7,7 +7,7 @@ services and authorization rules.
 
 Implemented tools: `context_identity`, `context_resource`,
 `context_create_collection`, `context_create_upload`, `context_finalize_upload`,
-`context_ingest_text`, `context_job_status`, `context_cancel_job`, and
+`context_upload_receipt`, `context_ingest_text`, `context_job_status`, `context_cancel_job`, and
 `context_retry_job`, `context_ingest_url`, `context_query`, `context_expand`,
 `context_extract_media`, `context_asset_history`, `context_reprocess`, and
 `context_set_access`. Their exact descriptors are exported by `context-mcp catalog`.
@@ -25,7 +25,8 @@ setup. Exact exported descriptors are the wire-level input/output contracts.
 
 | Logical operation | Input contract | Output contract |
 | --- | --- | --- |
-| Create/finalize upload | Collection, file metadata/size/hash, idempotency key; verified completion | Upload session or durable ingestion receipt |
+| Create/finalize upload | Collection, file metadata/size/hash, idempotency key; optional existing asset and `expected_revision`; verified completion | Upload session or durable job admission receipt |
+| Look up upload receipt | `create_upload` or `finalize_upload` and its original request, including the key | Read-only, currently authorized projection of the original IDs; finalize proves admission only |
 | Ingest exact URL | Collection, URL, selected operator workflow, idempotency key | Asset/revision/job receipt |
 | Inspect/cancel/retry job | Authorized job identity; expected state where relevant | Durable state, bounded stage progress and redacted error |
 | Refresh/reprocess | Asset, expected current revision, selected workflow | New immutable revision and durable job |

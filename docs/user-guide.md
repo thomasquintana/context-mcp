@@ -502,10 +502,14 @@ operator-configured profile. For local HTTP, add `--allow-http`.
 Without `--wait`, the command prints an admission receipt. With it, it polls every
 500 ms and prints the final successful status. The waiting ceiling is one hour;
 timing out does **not** cancel the durable job. A failed wait may not print the
-original receipt; recover the same operation with the same key and retain its IDs.
+original receipt. Use the read-only upload receipt lookup with the original finalize
+request and retain its IDs. For the CLI upload command, the underlying keys append
+`:upload` for create and `:finalize` for finalize. If you do not have the upload ID,
+look up the create receipt first using the file metadata from the original request.
 
 The CLI upload command creates a new asset. To replace an existing asset, use the
-public create-upload/finalize flow with `asset`, described below.
+public create-upload/finalize flow with `asset`, described below. Include the reviewed
+`expected_revision` to make publication conditional on that revision staying current.
 
 ### Ingest text directly
 
@@ -577,6 +581,12 @@ the previous attempt already committed. Try finalization; it verifies the bytes.
 Do not overwrite the storage key or remove its fence. Expired or invalid sessions
 are not made valid by a successful old PUT. Replaying creation after finalization
 can return `finalized:true` and `job` instead of a fresh URL.
+
+**Missing mutation response:** use `context_upload_receipt` with the original create
+or finalize arguments and key. It returns only the original IDs. No committed
+receipt observed does not prove the request never ran or authorize automatic retry.
+A finalize receipt proves admission only. See [ingestion.md](ingestion.md) for exact
+lookup arguments and conditional publication examples.
 
 ### Import an exact URL
 
@@ -2084,8 +2094,9 @@ tenant membership and Share. Creating a collection also requires Share.
 
 | Tool | Required arguments | Optional arguments | Application result |
 | --- | --- | --- | --- |
-| `context_create_upload` | `collection`, `name`, `media_type`, `size_bytes`, `sha256`, `idempotency_key` | `asset`, `profile` | `upload`, `asset`, `revision`, signed `url`, `headers`, `expires_in_seconds`; finalized replay may return `finalized`, `job` instead of transfer fields |
+| `context_create_upload` | `collection`, `name`, `media_type`, `size_bytes`, `sha256`, `idempotency_key` | `asset`, `profile`, `expected_revision` (requires `asset`) | `upload`, `asset`, `revision`, signed `url`, `headers`, `expires_in_seconds`; replay may return IDs without transfer fields |
 | `context_finalize_upload` | `upload`, `idempotency_key` | None | Admission receipt: `job`, `asset`, `revision`, `state` |
+| `context_upload_receipt` | `operation`, original `request` with its key | None | Read-only `operation`, `upload`, `asset`, `revision`, plus `job` for finalize |
 | `context_ingest_text` | `collection`, `name`, `text`, `idempotency_key` | `profile` | Admission receipt |
 | `context_ingest_url` | `collection`, `name`, `url`, `media_type`, `idempotency_key` | `asset`, `profile` | Admission receipt |
 | `context_job_status` | `job` | None | `job`, `asset`, `revision`, `state`, `stage`, `error_code`, `chunks`, `result`, `cleanup_pending` |

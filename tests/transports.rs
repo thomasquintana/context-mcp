@@ -102,6 +102,7 @@ fn client_config(dir: &std::path::Path, name: &str, endpoint: Value, transport: 
         ("create", "context_create_collection"),
         ("upload", "context_create_upload"),
         ("finalize", "context_finalize_upload"),
+        ("upload_receipt", "context_upload_receipt"),
         ("text", "context_ingest_text"),
         ("job", "context_job_status"),
         ("cancel", "context_cancel_job"),
@@ -161,6 +162,24 @@ graph acceptance.content_resource {
 }
 "#).unwrap();
     roles.insert("read_resource".into(),json!({"source":"client-read-resource.htlk","catalogs":dir.join(format!("context-{transport}.json"))}));
+    std::fs::write(dir.join("client-read-revision.htlk"),r#"
+ir_version = "0.1"
+graph acceptance.revision_resource {
+    inputs = {request = json}
+    outputs = {result = json}
+    nodes {
+        resource = read(mcp.template("context","context://asset/{asset}/revision/{revision}"))
+        result = eval(json, {text = inputs.resource.contents[0].text}) {inputs = {resource = McpResourceResult}}
+    }
+    edges {
+        edge request {from = inputs.request to = resource.inputs.arguments}
+        edge resource {from = resource.outputs.value to = result.inputs.resource}
+        edge result {from = result.outputs.value to = outputs.result}
+    }
+    limits {max_mcp_calls = 1}
+}
+"#).unwrap();
+    roles.insert("read_revision".into(),json!({"source":"client-read-revision.htlk","catalogs":dir.join(format!("context-{transport}.json"))}));
     serde_json::from_value(json!({"database":format!("{name}.sqlite"),"roles":roles,
         "endpoints":{"context-mcp":endpoint},"required_deployments":["context-mcp"],"workers":2,"max_runs":8})).unwrap()
 }
@@ -346,6 +365,35 @@ graph fixture.{role} {{
             .send().await.unwrap().error_for_status().unwrap().json().await.unwrap();
         assert_eq!(rest["state"],"succeeded");
         assert_eq!(setup.get(format!("{base}/jobs/{}",finalized["job"].as_str().unwrap())).send().await.unwrap().status(),reqwest::StatusCode::UNAUTHORIZED);
+        if legacy.is_none() {
+            let bytes = "updated transport payload";
+            let hash: String = Sha256::digest(bytes).iter().map(|b|format!("{b:02x}")).collect();
+            let create = json!({"collection":initial.collection,"asset":finalized["asset"],"expected_revision":finalized["revision"],"name":"transport-v2.txt","media_type":"text/plain","size_bytes":bytes.len(),"sha256":hash,"idempotency_key":"version-http"});
+            let mut stale_request = create.clone();
+            stale_request["idempotency_key"] = json!("stale-http");
+            let stale: Value = setup.post(format!("{base}/uploads")).bearer_auth(full.secret()).json(&stale_request).send().await.unwrap().error_for_status().unwrap().json().await.unwrap();
+            let pending = succeeded(call(&host,grant.job,"upload",create.clone()).await);
+            for transfer in [&pending, &stale] {
+                let mut put = setup.put(transfer["url"].as_str().unwrap()).body(bytes);
+                for (name,value) in transfer["headers"].as_object().unwrap(){put=put.header(name,value.as_str().unwrap());}
+                assert!(put.send().await.unwrap().status().is_success());
+            }
+            assert_eq!(succeeded(call(&host,grant.job,"upload_receipt",json!({"operation":"create_upload","request":create})).await),json!({"operation":"create_upload","upload":pending["upload"],"asset":pending["asset"],"revision":pending["revision"]}));
+            let admitted: Value = setup.post(format!("{base}/uploads/{}/complete",pending["upload"].as_str().unwrap())).bearer_auth(full.secret()).json(&json!({"idempotency_key":"version-final"})).send().await.unwrap().error_for_status().unwrap().json().await.unwrap();
+            assert_eq!(admitted["asset"],finalized["asset"]);
+            assert_ne!(admitted["revision"],finalized["revision"]);
+            wait_job(&host,grant.job,&admitted["job"]).await;
+            let rejected = setup.post(format!("{base}/uploads/{}/complete",stale["upload"].as_str().unwrap())).bearer_auth(full.secret()).json(&json!({"idempotency_key":"stale-final"})).send().await.unwrap();
+            assert_eq!(rejected.status(),reqwest::StatusCode::CONFLICT);
+            assert_eq!(succeeded(call(&host,grant.job,"upload_receipt",json!({"operation":"finalize_upload","request":{"upload":pending["upload"],"idempotency_key":"version-final"}})).await),json!({"operation":"finalize_upload","upload":pending["upload"],"asset":admitted["asset"],"revision":admitted["revision"],"job":admitted["job"]}));
+            for (revision, expected, current) in [(&finalized["revision"],"transport fixture",false),(&admitted["revision"],bytes,true)] {
+                let read = succeeded(call(&host,grant.job,"read_revision",json!({"asset":admitted["asset"],"revision":revision})).await);
+                let exact: Value = serde_json::from_str(read["text"].as_str().unwrap()).unwrap();
+                assert_eq!(exact["current"],current);
+                let downloaded = setup.get(exact["url"].as_str().unwrap()).send().await.unwrap().error_for_status().unwrap().bytes().await.unwrap();
+                assert_eq!(downloaded.as_ref(),expected.as_bytes());
+            }
+        }
         let local_file=dir.path().join("cli-upload.txt");std::fs::write(&local_file,b"transport fixture").unwrap();let uploaded=Command::new(binary).args(["upload","--endpoint",&public,"--token-env","CONTEXT_CLI_TEST_TOKEN","--allow-http","--file"]).arg(&local_file).args(["--collection",&initial.collection.to_string(),"--idempotency-key","cli-upload","--wait"]).env("CONTEXT_CLI_TEST_TOKEN",full.secret()).output().unwrap();assert!(uploaded.status.success(),"actual streaming CLI upload failed");let uploaded:Value=serde_json::from_slice(&uploaded.stdout).unwrap();assert_eq!(uploaded["state"],"succeeded");
         // A persisted cancellation fence precedes engine startup. Missing admission
         // handles can be replayed without invoking a new external mutation.
@@ -461,6 +509,7 @@ graph acceptance.stdio_roundtrip {
         assert_eq!(succeeded(call(&host,grant.job,"identity",json!({})).await)["principal"],principal.to_string());
         let retained=succeeded(call(&host,grant.job,"expand",json!({"pointer":{"kind":"content","content":context["evidence"][0]["id"]}})).await);
         assert_eq!(retained,expanded,"the new execution store must not alter published evidence");
+        assert_eq!(succeeded(call(&host,grant.job,"upload_receipt",json!({"operation":"finalize_upload","request":{"upload":transfer["upload"],"idempotency_key":"finalize-http"}})).await),json!({"operation":"finalize_upload","upload":transfer["upload"],"asset":finalized["asset"],"revision":finalized["revision"],"job":finalized["job"]}));
         let roundtrip=succeeded(call(&host,grant.job,"roundtrip",json!({"collection":initial.collection,"workspace":initial.workspace,"name":"stdio.txt","text":"transport fixture","idempotency_key":"text-stdio"})).await);
         assert_eq!(roundtrip["admitted"],roundtrip["duplicate"]);assert_eq!(roundtrip["context"]["evidence"].as_array().unwrap().len(),1,"duplicate text is selected once across transports");
         host.shutdown().await.unwrap();

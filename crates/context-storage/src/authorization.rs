@@ -46,6 +46,18 @@ impl Database {
     ) -> Result<AuthorizedTransaction<'_>> {
         self.authorized(actor, target, permission, false).await
     }
+
+    /// Start a read-only snapshot when a protected lookup resolves its target from stored IDs.
+    /// Callers must authorize the resolved resource in this snapshot before exposing data.
+    ///
+    /// # Errors
+    /// Rejects missing or revoked credentials and database failures.
+    pub async fn authenticated_view(
+        &self,
+        actor: &Authentication,
+    ) -> Result<AuthorizedTransaction<'_>> {
+        self.authorization_snapshot(actor, false).await
+    }
     /// Authorize a protected read with credential state, memberships and data in one snapshot.
     ///
     /// # Errors
@@ -82,6 +94,22 @@ impl Database {
         permission: Permission,
         write: bool,
     ) -> Result<AuthorizedTransaction<'_>> {
+        let mut authorized = self.authorization_snapshot(actor, write).await?;
+        authorized.authorize(target, permission).await?;
+        if write {
+            sqlx::query("SELECT id FROM context.resources WHERE id=$1 FOR UPDATE")
+                .bind(resource_id(target))
+                .fetch_one(&mut *authorized.transaction)
+                .await?;
+        }
+        Ok(authorized)
+    }
+
+    async fn authorization_snapshot(
+        &self,
+        actor: &Authentication,
+        write: bool,
+    ) -> Result<AuthorizedTransaction<'_>> {
         let mut tx = self.transaction().await?;
         let isolation = if write {
             "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"
@@ -101,18 +129,10 @@ impl Database {
             scopes = scopes.intersection(&stored).copied().collect();
         }
         let context = context_in(&mut tx, actor.principal, scopes).await?;
-        let mut authorized = AuthorizedTransaction {
+        Ok(AuthorizedTransaction {
             transaction: tx,
             context,
-        };
-        authorized.authorize(target, permission).await?;
-        if write {
-            sqlx::query("SELECT id FROM context.resources WHERE id=$1 FOR UPDATE")
-                .bind(resource_id(target))
-                .fetch_one(&mut *authorized.transaction)
-                .await?;
-        }
-        Ok(authorized)
+        })
     }
 }
 

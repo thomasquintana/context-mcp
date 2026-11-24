@@ -360,15 +360,38 @@ pub async fn existing_receipt(
         .bind(lock_key)
         .execute(&mut **tx)
         .await?;
-    let row = sqlx::query("SELECT request_digest,receipt FROM context.receipts WHERE principal=$1 AND operation=$2 AND idempotency_key=$3")
-        .bind(Uuid::from(principal)).bind(operation).bind(key).fetch_optional(&mut **tx).await?;
-    match row {
+    match read_receipt(tx, principal, operation, &key).await? {
         None => Ok(None),
-        Some(row) if row.try_get::<Vec<u8>, _>("request_digest")? == digest => {
-            Ok(Some(row.try_get("receipt")?))
-        }
+        Some((stored, value)) if stored == digest => Ok(Some(value)),
         Some(_) => Err(Error::Conflict),
     }
+}
+
+/// Observe a committed receipt without taking an admission lock or mutating state.
+/// A miss does not establish that the operation never ran or is safe to retry.
+///
+/// # Errors
+/// Rejects invalid keys and database failures.
+pub async fn observed_receipt(
+    tx: &mut Transaction<'_, Postgres>,
+    principal: PrincipalId,
+    operation: &str,
+    key: &str,
+) -> Result<Option<(Vec<u8>, Value)>> {
+    if key.is_empty() || key.len() > 256 {
+        return Err(Error::Invalid);
+    }
+    read_receipt(tx, principal, operation, &receipt_key(key)).await
+}
+
+async fn read_receipt(
+    tx: &mut Transaction<'_, Postgres>,
+    principal: PrincipalId,
+    operation: &str,
+    key_handle: &str,
+) -> Result<Option<(Vec<u8>, Value)>> {
+    Ok(sqlx::query_as("SELECT request_digest,receipt FROM context.receipts WHERE principal=$1 AND operation=$2 AND idempotency_key=$3")
+        .bind(Uuid::from(principal)).bind(operation).bind(key_handle).fetch_optional(&mut **tx).await?)
 }
 
 /// Opaque lookup handle for a caller-chosen idempotency key; never retain raw key text.

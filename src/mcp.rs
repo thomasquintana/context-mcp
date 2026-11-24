@@ -4,7 +4,10 @@ use context_core::{
     access::Authentication,
     ids::{AssetId, CollectionId, JobId, TenantId, WorkspaceId},
 };
-use context_engine::Application;
+use context_engine::{
+    Application,
+    uploads::{CreateUpload, FinalizeUpload, UploadReceipt},
+};
 use rmcp::{
     ErrorData, ServerHandler,
     model::*,
@@ -84,12 +87,6 @@ struct CollectionArguments {
     idempotency_key: String,
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct FinalizeArguments {
-    upload: uuid::Uuid,
-    idempotency_key: String,
-}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TextArguments {
@@ -310,17 +307,23 @@ impl ServerHandler for McpServer {
                     .await
             }
             "context_create_upload" => {
-                let args: context_engine::uploads::CreateUpload = serde_json::from_value(arguments)
+                let args: CreateUpload = serde_json::from_value(arguments)
                     .map_err(|_| ErrorData::invalid_params("invalid upload arguments", None))?;
                 self.application.create_upload(&actor, args).await
             }
             "context_finalize_upload" => {
-                let args: FinalizeArguments = serde_json::from_value(arguments).map_err(|_| {
+                let args: FinalizeUpload = serde_json::from_value(arguments).map_err(|_| {
                     ErrorData::invalid_params("invalid finalization arguments", None)
                 })?;
                 self.application
                     .finalize_upload(&actor, args.upload, &args.idempotency_key)
                     .await
+            }
+            "context_upload_receipt" => {
+                let args: UploadReceipt = serde_json::from_value(arguments).map_err(|_| {
+                    ErrorData::invalid_params("invalid upload receipt arguments", None)
+                })?;
+                self.application.upload_receipt(&actor, args).await
             }
             "context_ingest_text" => {
                 let args: TextArguments = serde_json::from_value(arguments)
@@ -538,6 +541,17 @@ pub fn resource_templates() -> Vec<ResourceTemplate> {
 /// Exact descriptors for currently implemented application operations.
 pub fn tools() -> Vec<Tool> {
     let id = json!({"type":"string","format":"uuid"});
+    let key = json!({"type":"string","minLength":1,"maxLength":256});
+    let create = json!({"type":"object","required":["collection","name","media_type","size_bytes","sha256","idempotency_key"],"properties":{"collection":id,"asset":id,"expected_revision":id,"name":{"type":"string","minLength":1,"maxLength":256},"media_type":{"type":"string","maxLength":128},"size_bytes":{"type":"integer","minimum":1},"sha256":{"type":"string","pattern":"^[0-9a-fA-F]{64}$"},"profile":{"type":"string"},"idempotency_key":key},"dependentRequired":{"expected_revision":["asset"]},"additionalProperties":false});
+    let finalize = json!({"type":"object","required":["upload","idempotency_key"],"properties":{"upload":id,"idempotency_key":key},"additionalProperties":false});
+    let receipt_input = json!({"type":"object","required":["operation","request"],"properties":{"operation":{"enum":["create_upload","finalize_upload"]},"request":{"type":"object"}},"additionalProperties":false,"oneOf":[
+        {"properties":{"operation":{"const":"create_upload"},"request":create}},
+        {"properties":{"operation":{"const":"finalize_upload"},"request":finalize}}
+    ]});
+    let receipt_output = json!({"type":"object","required":["operation","upload","asset","revision"],"properties":{"operation":{"enum":["create_upload","finalize_upload"]},"upload":id,"asset":id,"revision":id,"job":id},"additionalProperties":false,"oneOf":[
+        {"properties":{"operation":{"const":"create_upload"}},"not":{"required":["job"]}},
+        {"properties":{"operation":{"const":"finalize_upload"}},"required":["job"]}
+    ]});
     let source = json!({"type":"object","required":["asset","revision","location","available"],"properties":{"asset":id,"revision":id,"location":{"type":"object"},"available":{"type":"boolean"}},"additionalProperties":false});
     let memory = json!({"type":"object","required":["workspace","subject","description","value","expected_version","idempotency_key"],"properties":{"workspace":id,"memory":id,"subject":{"type":"string","minLength":1,"maxLength":512},"description":{"type":"string","maxLength":8192},"value":{"type":"object","required":["kind"],"properties":{"kind":{"enum":["text","typed"]},"statement":{"type":"string","maxLength":32768},"value_type":{"type":"string","maxLength":128},"value":{}},"additionalProperties":false},"expected_version":{"type":"integer","minimum":0},"derived_from":{"type":"array","maxItems":64,"items":source},"citations":{"type":"array","maxItems":64,"items":source},"derived_content":{"type":"array","maxItems":64,"items":id},"supersedes":{"type":"array","maxItems":64,"items":id},"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false});
     let descriptors = [
@@ -603,15 +617,21 @@ pub fn tools() -> Vec<Tool> {
         ),
         (
             "context_create_upload",
-            "Reserve a tracked upload session and immutable source revision. Return signed transfer URL/headers; finalize after transfer. Requires Ingest authority and configured processing capabilities.",
-            json!({"type":"object","required":["collection","name","media_type","size_bytes","sha256","idempotency_key"],"properties":{"collection":id,"asset":id,"name":{"type":"string","minLength":1,"maxLength":256},"media_type":{"type":"string","maxLength":128},"size_bytes":{"type":"integer","minimum":1},"sha256":{"type":"string","pattern":"^[0-9a-fA-F]{64}$"},"profile":{"type":"string"},"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false}),
+            "Reserve an immutable source revision and return signed transfer details. With an existing asset, expected_revision requires that live current predecessor through finalize and publication. Requires Ingest and configured processing capabilities.",
+            create,
             false,
         ),
         (
             "context_finalize_upload",
-            "Verify/freeze uploaded bytes and accept one durable processing job. Failed replacement preserves the previous published revision.",
-            json!({"type":"object","required":["upload","idempotency_key"],"properties":{"upload":id,"idempotency_key":{"type":"string","minLength":1,"maxLength":256}},"additionalProperties":false}),
+            "Verify/freeze uploaded bytes and accept one durable processing job, respecting any stored revision precondition. Failed replacement preserves the previous published revision.",
+            finalize,
             false,
+        ),
+        (
+            "context_upload_receipt",
+            "Read only the original IDs of a committed create_upload or finalize_upload request under the authenticated principal and current Ingest authority. Supply the original request and key. No committed receipt observed does not prove the request never ran or authorize automatic retry. A finalize receipt proves job admission only.",
+            receipt_input,
+            true,
         ),
         (
             "context_ingest_text",
@@ -686,6 +706,7 @@ pub fn tools() -> Vec<Tool> {
             .expect("static schema")
             .clone(),
     );
+    let receipt_output = Arc::new(receipt_output.as_object().expect("static schema").clone());
     descriptors
         .into_iter()
         .map(|(name, description, input, read)| {
@@ -694,7 +715,11 @@ pub fn tools() -> Vec<Tool> {
                 description,
                 input.as_object().expect("static schema").clone(),
             )
-            .with_raw_output_schema(output.clone())
+            .with_raw_output_schema(if name == "context_upload_receipt" {
+                receipt_output.clone()
+            } else {
+                output.clone()
+            })
             .with_annotations(
                 ToolAnnotations::new()
                     .read_only(read)

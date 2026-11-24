@@ -6,8 +6,11 @@ use context_core::{
     access::{Authentication, Permission},
     ids::{JobId, PrincipalId},
 };
-use context_engine::{Application, Config, bootstrap};
-use context_storage::postgres::Database;
+use context_engine::{
+    Application, Config, bootstrap,
+    uploads::{CreateUpload, FinalizeUpload, UploadReceipt},
+};
+use context_storage::postgres::{Database, receipt_key};
 use futures_util::TryStreamExt;
 use object_store::{
     ObjectStore, ObjectStoreExt,
@@ -278,6 +281,50 @@ graph fixture.{role} {{
         panic!("bounded ingestion deadline exceeded")
     }
 
+    async fn upload_counts(&self) -> (i64, i64, i64, i64) {
+        sqlx::query_as("SELECT (SELECT count(*) FROM context.uploads WHERE principal=$1), (SELECT count(*) FROM context.revisions WHERE author=$1), (SELECT count(*) FROM context.jobs WHERE principal=$1), (SELECT count(*) FROM context.receipts WHERE principal=$1)")
+            .bind(Uuid::from(self.principal)).fetch_one(self.db.pool()).await.unwrap()
+    }
+
+    fn upload_request(&self, bytes: &str, key: &str) -> CreateUpload {
+        CreateUpload {
+            collection: self.collection,
+            asset: None,
+            expected_revision: None,
+            name: "fixture.txt".into(),
+            media_type: "text/plain".into(),
+            size_bytes: bytes.len() as u64,
+            sha256: Sha256::digest(bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect(),
+            profile: None,
+            idempotency_key: key.into(),
+        }
+    }
+
+    async fn put_upload(&self, transfer: &Value, bytes: &str) {
+        let mut put = self
+            .http
+            .put(transfer["url"].as_str().unwrap())
+            .body(bytes.to_owned());
+        for (name, value) in transfer["headers"].as_object().unwrap() {
+            put = put.header(name, value.as_str().unwrap());
+        }
+        put.send().await.unwrap().error_for_status().unwrap();
+    }
+
+    async fn wait_for_blocked_transaction(&self, blocker: i32) {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let waiting: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)))")
+                    .bind(blocker).fetch_one(self.db.pool()).await.unwrap();
+                if waiting { break; }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.expect("mutation did not reach the PostgreSQL barrier");
+    }
+
     async fn close(self) {
         self.app.shutdown().await.unwrap();
         let remaining = self.admin.list(None).try_collect::<Vec<_>>().await.unwrap();
@@ -336,6 +383,90 @@ graph fixture.{role} {{
 
 #[test]
 #[ignore = "requires isolated PostgreSQL, MinIO and Typesense; pure processing fixtures"]
+fn upload_receipt_observes_only_commits_and_rechecks_authority_without_effects() {
+    actix::System::new().block_on(async {
+        use context_engine::Error::Storage;
+        use context_storage::Error::{Conflict, Unavailable};
+
+        let fixture = Fixture::open().await; // Leave the admitted job unprocessed.
+        let bytes = "lost response fixture";
+        let create = fixture.upload_request(bytes, "lost-create");
+        let lookup_create = || UploadReceipt::CreateUpload(create.clone());
+        let mut barrier = fixture.db.transaction().await.unwrap();
+        sqlx::query("LOCK context.receipts IN SHARE MODE").execute(&mut *barrier).await.unwrap();
+        let holder: i32 = sqlx::query_scalar("SELECT pg_backend_pid()").fetch_one(&mut *barrier).await.unwrap();
+        let (write, ()) = tokio::join!(fixture.app.create_upload(&fixture.actor, create.clone()), async {
+            fixture.wait_for_blocked_transaction(holder).await;
+            assert!(matches!(fixture.app.upload_receipt(&fixture.actor, lookup_create()).await, Err(Storage(Unavailable))));
+            assert_eq!(fixture.upload_counts().await, (0, 0, 0, 0));
+            barrier.commit().await.unwrap();
+        });
+        // The test caller loses the reply; recover using only the original request.
+        drop(write.unwrap());
+        let (upload, asset, revision): (Uuid, Uuid, Uuid) = sqlx::query_as("SELECT id,asset,revision FROM context.uploads WHERE principal=$1")
+            .bind(Uuid::from(fixture.principal)).fetch_one(fixture.db.pool()).await.unwrap();
+        let created = json!({"operation":"create_upload","upload":upload,"asset":asset,"revision":revision});
+        assert_eq!(fixture.app.upload_receipt(&fixture.actor, lookup_create()).await.unwrap(), created);
+        assert_eq!(fixture.upload_counts().await, (1, 1, 0, 1));
+
+        // Simulate the pre-upgrade create JSON and verify the exact legacy digest.
+        let hash: [u8; 32] = Sha256::digest(bytes).into();
+        let legacy_digest = Sha256::digest(serde_json::to_vec(&(create.collection, create.asset, &create.name, "text/plain", create.size_bytes, hash, &create.profile)).unwrap());
+        let stored: Vec<u8> = sqlx::query_scalar("UPDATE context.receipts SET receipt=jsonb_build_object('upload',$3::uuid) WHERE principal=$1 AND operation='create_upload' AND idempotency_key=$2 RETURNING request_digest")
+            .bind(Uuid::from(fixture.principal)).bind(receipt_key(&create.idempotency_key)).bind(upload).fetch_one(fixture.db.pool()).await.unwrap();
+        assert_eq!(stored, legacy_digest.as_slice());
+        let mut normalized = create.clone();
+        normalized.media_type = "Text/Plain; charset=utf-8".into();
+        normalized.sha256.make_ascii_uppercase();
+        assert_eq!(fixture.app.upload_receipt(&fixture.actor, UploadReceipt::CreateUpload(normalized)).await.unwrap(), created);
+        let mut mismatch = create.clone();
+        mismatch.name = "different.txt".into();
+        assert!(matches!(fixture.app.upload_receipt(&fixture.actor, UploadReceipt::CreateUpload(mismatch)).await, Err(Storage(Conflict))));
+
+        let transfer = fixture.app.create_upload(&fixture.actor, create.clone()).await.unwrap();
+        assert_eq!(transfer["upload"], created["upload"]);
+        fixture.put_upload(&transfer, bytes).await;
+        let finalize = || UploadReceipt::FinalizeUpload(FinalizeUpload { upload, idempotency_key: "lost-finalize".into() });
+        let mut barrier = fixture.db.transaction().await.unwrap();
+        sqlx::query("LOCK context.receipts IN SHARE MODE").execute(&mut *barrier).await.unwrap();
+        let holder: i32 = sqlx::query_scalar("SELECT pg_backend_pid()").fetch_one(&mut *barrier).await.unwrap();
+        let (write, ()) = tokio::join!(fixture.app.finalize_upload(&fixture.actor, upload, "lost-finalize"), async {
+            fixture.wait_for_blocked_transaction(holder).await;
+            assert!(matches!(fixture.app.upload_receipt(&fixture.actor, finalize()).await, Err(Storage(Unavailable))));
+            assert_eq!(fixture.upload_counts().await, (1, 1, 0, 1));
+            barrier.commit().await.unwrap();
+        });
+        drop(write.unwrap());
+        let job: Uuid = sqlx::query_scalar("SELECT id FROM context.jobs WHERE revision=$1 AND state='accepted'")
+            .bind(revision).fetch_one(fixture.db.pool()).await.unwrap();
+        assert_eq!(fixture.app.upload_receipt(&fixture.actor, finalize()).await.unwrap(), json!({"operation":"finalize_upload","upload":upload,"asset":asset,"revision":revision,"job":job}));
+        assert!(matches!(fixture.app.upload_receipt(&fixture.actor, UploadReceipt::FinalizeUpload(FinalizeUpload { upload: Uuid::now_v7(), idempotency_key: "lost-finalize".into() })).await, Err(Storage(Conflict))));
+        assert_eq!(fixture.upload_counts().await, (1, 1, 1, 2));
+
+        // Another principal with Ingest on the same asset cannot see these receipts.
+        let other = fixture.db.identity("ingestion-test", &Uuid::now_v7().to_string(), "service").await.unwrap();
+        let auth = fixture.app.authentication();
+        let scopes = BTreeSet::from([Permission::Ingest]);
+        let token = auth.issue_service(other, &scopes, Duration::from_secs(60)).await.unwrap();
+        let other_actor = auth.authenticate(token.secret()).await.unwrap();
+        sqlx::query("INSERT INTO context.grants(resource,recipient_kind,recipient,permissions) VALUES($1,'principal',$2,ARRAY['ingest'])")
+            .bind(asset).bind(Uuid::from(other)).execute(fixture.db.pool()).await.unwrap();
+        fixture.db.authorized_view(&other_actor, context_core::access::Resource::Asset(asset.into()), Permission::Ingest).await.unwrap().commit().await.unwrap();
+        let token = auth.issue_service(fixture.principal, &scopes, Duration::from_secs(60)).await.unwrap();
+        let revoked = auth.authenticate(token.secret()).await.unwrap();
+        assert!(fixture.app.upload_receipt(&revoked, finalize()).await.is_ok());
+        auth.revoke_service(fixture.principal, token.id).await.unwrap();
+        for denied in [&other_actor, &revoked] {
+            assert!(matches!(fixture.app.upload_receipt(denied, lookup_create()).await, Err(Storage(Unavailable))));
+            assert!(matches!(fixture.app.upload_receipt(denied, finalize()).await, Err(Storage(Unavailable))));
+        }
+        assert_eq!(fixture.upload_counts().await, (1, 1, 1, 2));
+        fixture.close().await;
+    });
+}
+
+#[test]
+#[ignore = "requires isolated PostgreSQL, MinIO and Typesense; pure processing fixtures"]
 fn durable_admission_publication_failure_cancel_and_retry_use_real_backing_services() {
     actix::System::new().block_on(async {
         let fixture=Fixture::open().await;
@@ -346,7 +477,7 @@ fn durable_admission_publication_failure_cancel_and_retry_use_real_backing_servi
         assert_eq!(fixture.app.ingest_text(&fixture.actor,fixture.collection,"fixture.txt","fixture content",None,"text-1").await.unwrap(),receipt);
         let asset=receipt["asset"].as_str().unwrap().parse().unwrap();
         let hash=Sha256::digest(b"fixture content").iter().map(|v|format!("{v:02x}")).collect::<String>();
-        fixture.app.create_upload(&fixture.actor,context_engine::uploads::CreateUpload {
+        fixture.app.create_upload(&fixture.actor,CreateUpload {
             collection:fixture.collection,asset:None,expected_revision:None,name:"fixture.txt".into(),media_type:"text/plain".into(),size_bytes:15,sha256:hash.clone(),
             profile:None,idempotency_key:"crossed:upload".into(),
         }).await.unwrap();
@@ -355,7 +486,7 @@ fn durable_admission_publication_failure_cancel_and_retry_use_real_backing_servi
         fixture.app.finalize_upload(&fixture.actor,original_upload["upload"].as_str().unwrap().parse().unwrap(),"crossed:finalize").await.unwrap();
         assert!(matches!(fixture.app.ingest_text(&fixture.actor,fixture.collection,"fixture.txt","fixture content",None,"crossed").await,
             Err(context_engine::Error::Storage(context_storage::Error::Conflict))));
-        let transfer=fixture.app.create_upload(&fixture.actor,context_engine::uploads::CreateUpload {
+        let transfer=fixture.app.create_upload(&fixture.actor,CreateUpload {
             collection:fixture.collection,asset:Some(asset),expected_revision:Some(receipt["revision"].as_str().unwrap().parse().unwrap()),name:"replacement.txt".into(),media_type:"text/plain".into(),size_bytes:15,sha256:hash,
             profile:Some("broken".into()),idempotency_key:"replacement".into(),
         }).await.unwrap();
@@ -666,7 +797,7 @@ fn actual_video_model_workflows_publish_independently_checked_evidence() {
         fixture.app=Arc::new(Application::open(&fixture.config,fixture._dir.path()).await.unwrap());fixture.app.start_workers().await.unwrap();
         let bytes=std::fs::read(std::env::var("CONTEXT_TEST_VIDEO_FIXTURE").expect("synthetic blue video with known speech")).unwrap();
         let hash=Sha256::digest(&bytes).iter().map(|b|format!("{b:02x}")).collect::<String>();
-        let transfer=fixture.app.create_upload(&fixture.actor,context_engine::uploads::CreateUpload {collection:fixture.collection,asset:None,expected_revision:None,name:"blue-with-speech.mp4".into(),media_type:"video/mp4".into(),size_bytes:bytes.len() as u64,sha256:hash,profile:None,idempotency_key:"real-video".into()}).await.unwrap();
+        let transfer=fixture.app.create_upload(&fixture.actor,CreateUpload {collection:fixture.collection,asset:None,expected_revision:None,name:"blue-with-speech.mp4".into(),media_type:"video/mp4".into(),size_bytes:bytes.len() as u64,sha256:hash,profile:None,idempotency_key:"real-video".into()}).await.unwrap();
         let mut put=fixture.http.put(transfer["url"].as_str().unwrap()).body(bytes);for(k,v)in transfer["headers"].as_object().unwrap(){put=put.header(k,v.as_str().unwrap());}assert!(put.send().await.unwrap().status().is_success());
         let admitted=fixture.app.finalize_upload(&fixture.actor,transfer["upload"].as_str().unwrap().parse().unwrap(),"real-video-final").await.unwrap();
         let job:JobId=admitted["job"].as_str().unwrap().parse().unwrap();let mut success=false;
@@ -1375,7 +1506,7 @@ fn permanent_purge_survives_restart_erases_mixed_history_across_owners_and_fence
         assert!(fixture.app.purge(&guest,Purge{target:Target::Asset(asset),expected_generation:Some(generation),idempotency_key:"not-the-owner".into()}).await.is_err());
         fixture.app.shutdown().await.unwrap();fixture.app=Arc::new(Application::open(&fixture.config,fixture._dir.path()).await.unwrap());
         let hash=Sha256::digest(b"fixture content").iter().map(|v|format!("{v:02x}")).collect::<String>();
-        let mut metadata=context_engine::uploads::CreateUpload{collection:fixture.collection,asset:Some(asset),expected_revision:None,name:"pending-replacement.txt".into(),media_type:"text/plain".into(),size_bytes:15,sha256:hash,profile:None,idempotency_key:"pending-replacement".into()};
+        let mut metadata=CreateUpload{collection:fixture.collection,asset:Some(asset),expected_revision:None,name:"pending-replacement.txt".into(),media_type:"text/plain".into(),size_bytes:15,sha256:hash,profile:None,idempotency_key:"pending-replacement".into()};
         let transfer=fixture.app.create_upload(&fixture.actor,metadata.clone()).await.unwrap();let mut put=fixture.http.put(transfer["url"].as_str().unwrap()).body("fixture content");for(k,v)in transfer["headers"].as_object().unwrap(){put=put.header(k,v.as_str().unwrap());}assert!(put.send().await.unwrap().status().is_success());
         fixture.app.finalize_upload(&fixture.actor,transfer["upload"].as_str().unwrap().parse().unwrap(),"pending-finalize").await.unwrap();
         metadata.idempotency_key="late-upload".into();let late=fixture.app.create_upload(&fixture.actor,metadata).await.unwrap();

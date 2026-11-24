@@ -6,7 +6,7 @@ use context_core::{
     ids::{AssetId, CollectionId, ContentId, JobId, RevisionId, TenantId},
 };
 use context_storage::postgres::{
-    existing_receipt, insert_resource, receipt, require_current_revision,
+    existing_receipt, insert_resource, observed_receipt, receipt, require_current_revision,
 };
 use context_workflows::host::JobGrant;
 use serde::Deserialize;
@@ -45,6 +45,31 @@ fn present_revision<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> std::result::Result<Option<RevisionId>, D::Error> {
     RevisionId::deserialize(deserializer).map(Some)
+}
+
+/// Original request to complete an upload; the reservation owns the precondition.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FinalizeUpload {
+    /// Upload session identity.
+    pub upload: Uuid,
+    /// Stable request key scoped to principal/operation.
+    pub idempotency_key: String,
+}
+
+/// Original upload request to verify against a committed receipt.
+#[derive(Deserialize)]
+#[serde(
+    tag = "operation",
+    content = "request",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum UploadReceipt {
+    /// Recover a reservation's IDs.
+    CreateUpload(CreateUpload),
+    /// Recover a job admission's IDs.
+    FinalizeUpload(FinalizeUpload),
 }
 
 pub(crate) fn digest(value: &str) -> Result<[u8; 32]> {
@@ -98,6 +123,113 @@ pub(crate) fn intent_digest(args: &CreateUpload, media: &str, hash: &[u8; 32]) -
 }
 
 impl Application {
+    /// Observe a committed upload receipt without making or replaying a mutation.
+    ///
+    /// # Errors
+    /// Rejects invalid requests, mismatched identities, missing receipts and lost Ingest authority.
+    /// A miss is not evidence that the original request never ran.
+    pub async fn upload_receipt(
+        &self,
+        actor: &Authentication,
+        args: UploadReceipt,
+    ) -> Result<Value> {
+        let (operation, key, hash) = match &args {
+            UploadReceipt::CreateUpload(request) => {
+                if request.expected_revision.is_some() && request.asset.is_none() {
+                    return Err(Error::Invalid);
+                }
+                (
+                    "create_upload",
+                    &request.idempotency_key,
+                    intent_digest(
+                        request,
+                        &media_type(&request.media_type)?,
+                        &digest(&request.sha256)?,
+                    )?,
+                )
+            }
+            UploadReceipt::FinalizeUpload(request) => (
+                "finalize_upload",
+                &request.idempotency_key,
+                Sha256::digest(request.upload.as_bytes()).into(),
+            ),
+        };
+        let mut ids = self
+            .upload_receipt_ids(actor, operation, key, &hash)
+            .await?;
+        if let UploadReceipt::FinalizeUpload(request) = args {
+            // Legacy finalize receipts did not store the upload ID. The matching
+            // UUID digest proves it without an upload row or a reverse search.
+            ids["upload"] = json!(request.upload);
+        }
+        ids["operation"] = json!(operation);
+        Ok(ids)
+    }
+
+    async fn upload_receipt_ids(
+        &self,
+        actor: &Authentication,
+        operation: &str,
+        key: &str,
+        hash: &[u8; 32],
+    ) -> Result<Value> {
+        let mut view = self.database.authenticated_view(actor).await?;
+        let (stored, receipt) =
+            observed_receipt(view.transaction(), actor.principal, operation, key)
+                .await?
+                .ok_or(context_storage::Error::Unavailable)?;
+        let id = |name| -> Result<Uuid> {
+            serde_json::from_value(receipt[name].clone()).map_err(|_| Error::Contract)
+        };
+        let (asset, revision, ids) = if operation == "create_upload" {
+            let upload = id("upload")?;
+            let (asset, revision): (Uuid, Uuid) = if receipt.get("asset").is_none() {
+                // Original receipt format held just the upload ID.
+                sqlx::query_as(
+                    "SELECT asset,revision FROM context.uploads WHERE id=$1 AND principal=$2",
+                )
+                .bind(upload)
+                .bind(Uuid::from(actor.principal))
+                .fetch_optional(&mut **view.transaction())
+                .await
+                .map_err(context_storage::Error::from)?
+                .ok_or(context_storage::Error::Unavailable)?
+            } else {
+                (id("asset")?, id("revision")?)
+            };
+            (
+                asset,
+                revision,
+                json!({"upload":upload,"asset":asset,"revision":revision}),
+            )
+        } else {
+            let (job, asset, revision) = (id("job")?, id("asset")?, id("revision")?);
+            let live: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.jobs WHERE id=$1 AND principal=$2 AND asset=$3 AND revision=$4 AND NOT EXISTS(SELECT 1 FROM context.purge_jobs WHERE job=$1))")
+                .bind(job).bind(Uuid::from(actor.principal)).bind(asset).bind(revision)
+                .fetch_one(&mut **view.transaction()).await.map_err(context_storage::Error::from)?;
+            if !live {
+                return Err(context_storage::Error::Unavailable.into());
+            }
+            (
+                asset,
+                revision,
+                json!({"job":job,"asset":asset,"revision":revision}),
+            )
+        };
+        view.authorize(Resource::Asset(asset.into()), Permission::Ingest)
+            .await?;
+        let live: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM context.revisions v JOIN context.content c ON c.id=v.content WHERE v.id=$1 AND v.asset=$2 AND NOT c.purging)")
+            .bind(revision).bind(asset).fetch_one(&mut **view.transaction()).await.map_err(context_storage::Error::from)?;
+        if !live {
+            return Err(context_storage::Error::Unavailable.into());
+        }
+        if stored != hash.as_slice() {
+            return Err(context_storage::Error::Conflict.into());
+        }
+        view.commit().await?;
+        Ok(ids)
+    }
+
     /// Explicitly reprocess a successful immutable source as a new revision/profile.
     ///
     /// # Errors
@@ -301,16 +433,24 @@ impl Application {
         .await?
         {
             permission.commit().await?;
-            return self
-                .upload_transfer(
-                    actor,
-                    existing["upload"]
-                        .as_str()
-                        .ok_or(Error::Contract)?
-                        .parse()
-                        .map_err(|_| Error::Contract)?,
-                )
-                .await;
+            let upload =
+                serde_json::from_value(existing["upload"].clone()).map_err(|_| Error::Contract)?;
+            return match self.upload_transfer(actor, upload).await {
+                Err(Error::Storage(
+                    context_storage::Error::Unavailable | context_storage::Error::Conflict,
+                )) => {
+                    // A retired or expired session cannot issue a transfer capability.
+                    // Recover its original IDs if the affected revision is still accessible.
+                    self.upload_receipt_ids(
+                        actor,
+                        "create_upload",
+                        &args.idempotency_key,
+                        &request_hash,
+                    )
+                    .await
+                }
+                result => result,
+            };
         }
         if args.name.trim().is_empty()
             || args.name.chars().count() > 256
@@ -415,7 +555,7 @@ impl Application {
             "create_upload",
             &args.idempotency_key,
             &request_hash,
-            &json!({"upload":upload}),
+            &json!({"upload":upload,"asset":asset,"revision":revision}),
         )
         .await?;
         permission.commit().await?;
@@ -558,7 +698,6 @@ impl Application {
             .authorized_write(actor, Resource::Asset(asset), Permission::Ingest)
             .await?;
         let tx = permission.transaction();
-        let request_hash: [u8; 32] = Sha256::digest(upload.as_bytes()).into();
         if let Some(existing) =
             existing_receipt(tx, actor.principal, "finalize_upload", key, &request_hash).await?
         {
